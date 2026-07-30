@@ -20,6 +20,7 @@
     "mongodb-memory-server": "^11.2.0",
     "mongoose": "^9.8.0",
     "multer": "^2.2.0",
-    "multer-storage-cloudinary": "^4.0.0"
+    "multer-storage-cloudinary": "^4.0.0",
+    "qrcode": "^1.5.4"
   }
 }

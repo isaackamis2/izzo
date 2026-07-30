@@ -25,6 +25,11 @@ const eventSchema = new mongoose.Schema({
   bannerImage: { type: String }, // Cloudinary URL
   manager: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   isFeatured: { type: Boolean, default: false },
+  isTicketed: { type: Boolean, default: false },
+  ticketTiers: [{
+    name: String,
+    price: Number
+  }],
 }, { 
   timestamps: true,
   optimisticConcurrency: true

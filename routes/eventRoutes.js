@@ -41,7 +41,7 @@ router.get('/:id', async (req, res) => {
 // POST new event
 router.post('/', async (req, res) => {
   try {
-    const { title, description, category, venue, date, price, maxCapacity, manager, bannerImage, isFeatured } = req.body;
+    const { title, description, category, venue, date, price, maxCapacity, manager, bannerImage, isFeatured, isTicketed, ticketTiers } = req.body;
     
     // Admin check for isFeatured
     let finalIsFeatured = false;
@@ -54,7 +54,9 @@ router.post('/', async (req, res) => {
       title, description, category, venue, date, price,
       maxCapacity, currentCapacity: parseInt(maxCapacity), manager,
       bannerImage: bannerImage || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=800&q=80',
-      isFeatured: finalIsFeatured
+      isFeatured: finalIsFeatured,
+      isTicketed,
+      ticketTiers
     });
     await newEvent.save();
     res.status(201).json(newEvent);
@@ -66,7 +68,7 @@ router.post('/', async (req, res) => {
 // PUT update event
 router.put('/:id', async (req, res) => {
   try {
-    const { title, description, category, venue, date, price, maxCapacity, bannerImage, isFeatured, manager } = req.body;
+    const { title, description, category, venue, date, price, maxCapacity, bannerImage, isFeatured, manager, isTicketed, ticketTiers } = req.body;
     
     // Admin check for isFeatured
     let finalIsFeatured = false;
@@ -77,7 +79,7 @@ router.put('/:id', async (req, res) => {
 
     const updated = await Event.findByIdAndUpdate(
       req.params.id,
-      { title, description, category, venue, date, price, maxCapacity, bannerImage, isFeatured: finalIsFeatured },
+      { title, description, category, venue, date, price, maxCapacity, bannerImage, isFeatured: finalIsFeatured, isTicketed, ticketTiers },
       { new: true, runValidators: true }
     );
     if (!updated) return res.status(404).json({ message: 'Event not found' });

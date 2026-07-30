@@ -20,6 +20,7 @@ const registrationRoutes = require('./routes/registrationRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
 const userRoutes = require('./routes/userRoutes');
+const ticketRoutes = require('./routes/ticketRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/events', eventRoutes);
@@ -27,6 +28,7 @@ app.use('/api/registrations', registrationRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/tickets', ticketRoutes);
 
 const PORT = process.env.PORT || 5000;
 
@@ -88,7 +90,12 @@ async function startServer() {
           manager: manager._id,
           description: 'A comprehensive summit for tech enthusiasts.',
           bannerImage: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=800&q=80',
-          isFeatured: true
+          isFeatured: true,
+          isTicketed: true,
+          ticketTiers: [
+            { name: 'Regular', price: 299 },
+            { name: 'VIP', price: 599 }
+          ]
         },
         {
           title: 'Outdoor Yoga Retreat',
@@ -101,7 +108,9 @@ async function startServer() {
           manager: manager._id,
           description: 'Relaxing yoga outdoors.',
           bannerImage: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=800&q=80',
-          isFeatured: true
+          isFeatured: true,
+          isTicketed: false,
+          ticketTiers: []
         },
         {
           title: 'Startup Pitch Night',
@@ -114,7 +123,12 @@ async function startServer() {
           manager: manager._id,
           description: 'Pitch your ideas to top VCs.',
           bannerImage: 'https://images.unsplash.com/photo-1556761175-5973dc0f32d7?auto=format&fit=crop&w=800&q=80',
-          isFeatured: true
+          isFeatured: true,
+          isTicketed: true,
+          ticketTiers: [
+            { name: 'General Admission', price: 15 },
+            { name: 'Investor Pass', price: 50 }
+          ]
         },
         {
           title: 'Global Food Festival',
@@ -127,7 +141,12 @@ async function startServer() {
           manager: manager._id,
           description: 'Taste the best cuisines from around the world.',
           bannerImage: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=800&q=80',
-          isFeatured: true
+          isFeatured: true,
+          isTicketed: true,
+          ticketTiers: [
+            { name: 'Tasting Pass', price: 25 },
+            { name: 'All-Inclusive', price: 100 }
+          ]
         },
         {
           title: 'Local Art Exhibition',
@@ -140,7 +159,9 @@ async function startServer() {
           manager: manager._id,
           description: 'A showcase of modern art from local artists.',
           bannerImage: 'https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?auto=format&fit=crop&w=800&q=80',
-          isFeatured: false
+          isFeatured: false,
+          isTicketed: false,
+          ticketTiers: []
         }
       ]);
       console.log('Seeded initial events into DB!');
