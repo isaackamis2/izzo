@@ -1,5 +1,6 @@
 const express = require('express');
 const User = require('../models/User');
+const { protect } = require('../middleware/authMiddleware');
 const router = express.Router();
 
 // Middleware to check if requester is Admin
@@ -57,6 +58,37 @@ router.delete('/:id', requireAdmin, async (req, res) => {
     res.json({ message: 'User deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Toggle saved event
+router.post('/save-event', protect, async (req, res) => {
+  try {
+    const { eventId } = req.body;
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const index = user.savedEvents.indexOf(eventId);
+    if (index === -1) {
+      user.savedEvents.push(eventId);
+    } else {
+      user.savedEvents.splice(index, 1);
+    }
+    
+    await user.save();
+    res.json({ savedEvents: user.savedEvents });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get saved events
+router.get('/saved-events', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).populate('savedEvents');
+    res.json(user.savedEvents);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 

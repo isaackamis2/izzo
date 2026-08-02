@@ -8,6 +8,7 @@ const registrationSchema = new mongoose.Schema({
   amountPaid: { type: Number, default: 0 },
   qrCode: { type: String },
   transactionId: { type: String },
+  checkedIn: { type: Boolean, default: false },
 }, { timestamps: true });
 
 // Prevent double registration

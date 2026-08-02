@@ -19,6 +19,8 @@ const eventSchema = new mongoose.Schema({
   },
   venue: { type: String, required: true },
   date: { type: Date, required: true },
+  endDate: { type: Date },
+  isRecurringYearly: { type: Boolean, default: false },
   price: { type: Number, default: 0 }, // 0 for free
   maxCapacity: { type: Number, required: true },
   currentCapacity: { type: Number, required: true }, // Decreases as people register
@@ -30,7 +32,8 @@ const eventSchema = new mongoose.Schema({
     name: String,
     price: Number
   }],
-}, { 
+  externalTicketLink: { type: String } // URL or instructions if not using MoMo
+}, {  
   timestamps: true,
   optimisticConcurrency: true
 });
