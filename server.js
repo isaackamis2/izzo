@@ -169,6 +169,35 @@ async function startServer() {
       console.log('Seeded initial events into DB!');
     }
 
+  // MCP Server Initialization
+  try {
+    const { initMCP } = require('./mcp/index');
+    const { server: mcpServer, SSEServerTransport } = await initMCP();
+    let transport;
+
+    // SSE connection endpoint
+    app.get('/mcp/sse', async (req, res) => {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || authHeader !== `Bearer ${process.env.MCP_API_KEY}`) {
+        return res.status(401).send('Unauthorized');
+      }
+      // SSEServerTransport expects the messages endpoint URL as first argument
+      transport = new SSEServerTransport("/mcp/message", res);
+      await mcpServer.connect(transport);
+    });
+
+    // Client message endpoint
+    app.post('/mcp/message', async (req, res) => {
+      if (!transport) {
+        return res.status(500).send('SSE connection not established');
+      }
+      await transport.handlePostMessage(req, res);
+    });
+    console.log('MCP Server endpoints enabled at /mcp/sse');
+  } catch (err) {
+    console.error('Failed to initialize MCP Server:', err);
+  }
+
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });

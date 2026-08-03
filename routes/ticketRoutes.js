@@ -9,12 +9,14 @@ const nodemailer = require('nodemailer');
 
 async function sendTicketEmail(user, event, registration) {
   try {
-    const testAccount = await nodemailer.createTestAccount();
     const transporter = nodemailer.createTransport({
-      host: "smtp.ethereal.email",
-      port: 587,
-      secure: false,
-      auth: { user: testAccount.user, pass: testAccount.pass },
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: { 
+        user: process.env.SMTP_USER, 
+        pass: process.env.SMTP_PASS 
+      },
     });
 
     const qrBase64 = registration.qrCode.split(';base64,').pop();
@@ -35,7 +37,6 @@ async function sendTicketEmail(user, event, registration) {
     });
 
     console.log("Ticket Email sent to:", user.email);
-    console.log("View Email Preview (Ethereal):", nodemailer.getTestMessageUrl(info));
   } catch (err) {
     console.error("Error sending email:", err);
   }
