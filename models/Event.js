@@ -5,17 +5,7 @@ const eventSchema = new mongoose.Schema({
   description: { type: String, required: true },
   category: { 
     type: String, 
-    required: true,
-    enum: [
-      'Business and Professional Events',
-      'Cultural, Artistic, and Performing Events',
-      'Social and Personal Celebrations',
-      'Food and Drink Events',
-      'Sports and Fitness Events',
-      'Charity and Cause-Driven Events',
-      'Educational and Informational Events',
-      'Product and Marketing Events'
-    ]
+    required: true
   },
   venue: { type: String, required: true },
   date: { type: Date, required: true },
@@ -32,6 +22,7 @@ const eventSchema = new mongoose.Schema({
     name: String,
     price: Number
   }],
+  priceRange: { type: String }, // e.g., "5000 RWF - 15000 RWF"
   externalTicketLink: { type: String } // URL or instructions if not using MoMo
 }, {  
   timestamps: true,
