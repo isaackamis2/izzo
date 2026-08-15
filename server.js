@@ -22,6 +22,7 @@ const uploadRoutes = require('./routes/uploadRoutes');
 const userRoutes = require('./routes/userRoutes');
 const ticketRoutes = require('./routes/ticketRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
+const scheduleRecurringEvents = require('./cron/recurringEvents');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/events', eventRoutes);
@@ -45,6 +46,9 @@ async function startServer() {
     await mongoose.connect(uri);
     console.log(`Connected to in-memory MongoDB at ${uri}`);
   }
+  
+  // Initialize cron jobs
+  scheduleRecurringEvents();
     
   // Seed some initial events if DB is empty
     // Seed users and events if DB is empty

@@ -21,7 +21,7 @@ async function sendTicketEmail(user, event, registration) {
 
     const qrBase64 = registration.qrCode.split(';base64,').pop();
     const info = await transporter.sendMail({
-      from: '"IzzoEvents" <noreply@izzoevents.com>',
+      from: `"IzzoEvents Tickets" <${process.env.SMTP_USER}>`,
       to: user.email,
       subject: `Your Ticket for ${event.title}`,
       html: `
