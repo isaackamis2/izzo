@@ -64,7 +64,7 @@ router.get('/share/:id', async (req, res) => {
         <meta property="og:image" content="${event.bannerImage}">
 
         <meta name="twitter:card" content="summary_large_image">
-        <meta name="twitter:url" content="${eventUrl}">
+        <meta name="twitter:domain" content="izzoevents.com">
         <meta name="twitter:title" content="${event.title}">
         <meta name="twitter:description" content="${safeDesc}">
         <meta name="twitter:image" content="${event.bannerImage}">
@@ -87,7 +87,7 @@ router.get('/share/:id', async (req, res) => {
 // POST new event
 router.post('/', async (req, res) => {
   try {
-    const { title, description, category, venue, date, price, maxCapacity, manager, bannerImage, isFeatured, isTicketed, ticketTiers } = req.body;
+    const { title, description, category, venue, organizerName, date, endDate, recurringFrequency, price, maxCapacity, manager, bannerImage, isFeatured, isTicketed, ticketTiers, priceRange, externalTicketLink } = req.body;
     
     // Admin check for isFeatured
     let finalIsFeatured = false;
@@ -97,12 +97,12 @@ router.post('/', async (req, res) => {
     }
 
     const newEvent = new Event({
-      title, description, category, venue, date, price,
+      title, description, category, venue, organizerName, date, endDate, recurringFrequency, price,
       maxCapacity, currentCapacity: parseInt(maxCapacity), manager,
       bannerImage: bannerImage || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=800&q=80',
       isFeatured: finalIsFeatured,
       isTicketed,
-      ticketTiers
+      ticketTiers, priceRange, externalTicketLink
     });
     await newEvent.save();
     res.status(201).json(newEvent);
@@ -114,7 +114,7 @@ router.post('/', async (req, res) => {
 // PUT update event
 router.put('/:id', async (req, res) => {
   try {
-    const { title, description, category, venue, date, price, maxCapacity, bannerImage, isFeatured, manager, isTicketed, ticketTiers } = req.body;
+    const { title, description, category, venue, organizerName, date, endDate, recurringFrequency, price, maxCapacity, bannerImage, isFeatured, manager, isTicketed, ticketTiers, priceRange, externalTicketLink } = req.body;
     
     // Admin check for isFeatured
     let finalIsFeatured = false;
@@ -125,7 +125,7 @@ router.put('/:id', async (req, res) => {
 
     const updated = await Event.findByIdAndUpdate(
       req.params.id,
-      { title, description, category, venue, date, price, maxCapacity, bannerImage, isFeatured: finalIsFeatured, isTicketed, ticketTiers },
+      { title, description, category, venue, organizerName, date, endDate, recurringFrequency, price, maxCapacity, bannerImage, isFeatured: finalIsFeatured, isTicketed, ticketTiers, priceRange, externalTicketLink },
       { new: true, runValidators: true }
     );
     if (!updated) return res.status(404).json({ message: 'Event not found' });

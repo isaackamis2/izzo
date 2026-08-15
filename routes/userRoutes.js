@@ -92,4 +92,47 @@ router.get('/saved-events', protect, async (req, res) => {
   }
 });
 
+// Update user profile (bio, avatar, socialLinks)
+router.put('/profile', protect, async (req, res) => {
+  try {
+    const { name, bio, avatar, socialLinks } = req.body;
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (name) user.name = name;
+    if (bio !== undefined) user.bio = bio;
+    if (avatar !== undefined) user.avatar = avatar;
+    if (socialLinks) user.socialLinks = socialLinks;
+
+    await user.save();
+    res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      bio: user.bio,
+      avatar: user.avatar,
+      socialLinks: user.socialLinks
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// GET public organizer profile and their events
+router.get('/organizer/:id', async (req, res) => {
+  try {
+    const organizer = await User.findById(req.params.id).select('name bio avatar socialLinks isVerified');
+    if (!organizer) return res.status(404).json({ message: 'Organizer not found' });
+    
+    const events = await require('../models/Event').find({ manager: req.params.id })
+      .sort({ date: 1 })
+      .select('-__v'); // fetch all their events
+
+    res.json({ organizer, events });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;

@@ -8,9 +8,10 @@ const eventSchema = new mongoose.Schema({
     required: true
   },
   venue: { type: String, required: true },
+  organizerName: { type: String, required: true, default: 'Unknown Organizer' },
   date: { type: Date, required: true },
   endDate: { type: Date },
-  isRecurringYearly: { type: Boolean, default: false },
+  recurringFrequency: { type: String, enum: ['none', 'daily', 'weekly', 'monthly', 'yearly'], default: 'none' },
   price: { type: Number, default: 0 }, // 0 for free
   maxCapacity: { type: Number, required: true },
   currentCapacity: { type: Number, required: true }, // Decreases as people register
