@@ -13,8 +13,8 @@ const eventSchema = new mongoose.Schema({
   endDate: { type: Date },
   recurringFrequency: { type: String, enum: ['none', 'daily', 'weekly', 'monthly', 'yearly'], default: 'none' },
   price: { type: Number, default: 0 }, // 0 for free
-  maxCapacity: { type: Number, required: true },
-  currentCapacity: { type: Number, required: true }, // Decreases as people register
+  maxCapacity: { type: Number, default: 9999 },
+  currentCapacity: { type: Number, default: 9999 }, // Decreases as people register
   bannerImage: { type: String }, // Cloudinary URL
   manager: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   isFeatured: { type: Boolean, default: false },
