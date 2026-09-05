@@ -251,41 +251,129 @@ router.get('/my-tickets', protect, async (req, res) => {
   }
 });
 
-// ─── Scan & Check-in Ticket ────────────────────────────────────────────────────
+// ─── Scan & Check-in Ticket (QR Code or Manual Code) ───────────────────────────
 router.post('/check-in', protect, async (req, res) => {
   try {
-    // Only Admin or Manager can check-in
     if (req.user.role !== 'Admin' && req.user.role !== 'Manager') {
       return res.status(403).json({ message: 'Not authorized to check-in tickets' });
     }
 
-    const { userId, eventId } = req.body;
-    
-    // Find Registration
-    const registration = await Registration.findOne({ user: userId, event: eventId }).populate('user', 'name email').populate('event', 'title manager');
-    
+    const { userId, eventId, ticketCode } = req.body;
+    let registration = null;
+
+    if (userId && eventId) {
+      registration = await Registration.findOne({ user: userId, event: eventId })
+        .populate('user', 'name email')
+        .populate('event', 'title manager');
+    } else if (ticketCode) {
+      const cleanCode = ticketCode.trim();
+      // Search by transactionId or Registration Mongo ID
+      const query = {
+        $or: [
+          { transactionId: cleanCode },
+          { _id: cleanCode.match(/^[0-9a-fA-F]{24}$/) ? cleanCode : null }
+        ].filter(Boolean)
+      };
+      if (eventId) query.event = eventId;
+      registration = await Registration.findOne(query)
+        .populate('user', 'name email')
+        .populate('event', 'title manager');
+    }
+
     if (!registration) {
-      return res.status(404).json({ message: 'Ticket not found or invalid QR code.' });
+      return res.status(404).json({ message: 'Ticket not found. Invalid QR code or ticket reference.' });
     }
 
     // Check if the manager owns the event (unless Admin)
-    if (req.user.role !== 'Admin' && registration.event.manager.toString() !== req.user._id.toString()) {
+    if (req.user.role !== 'Admin' && registration.event?.manager && registration.event.manager.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'You are not the manager of this event.' });
     }
 
-    // Check if already checked in
     if (registration.checkedIn) {
-      return res.status(400).json({ message: 'Ticket has ALREADY been used!', registration });
+      return res.status(400).json({ 
+        message: '⚠️ TICKET ALREADY USED! This ticket was previously checked in.', 
+        registration,
+        alreadyCheckedIn: true
+      });
     }
 
-    // Mark as checked in
     registration.checkedIn = true;
     await registration.save();
 
-    res.json({ message: 'Ticket successfully verified and checked in!', registration });
+    res.json({ 
+      message: '✅ Ticket verified! Check-in successful.', 
+      registration 
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
+// ─── Get Event Attendees & Stats ───────────────────────────────────────────────
+router.get('/event/:eventId/attendees', protect, async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.eventId);
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+
+    if (req.user.role !== 'Admin' && event.manager && event.manager.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized to view attendees for this event' });
+    }
+
+    const attendees = await Registration.find({ event: req.params.eventId })
+      .populate('user', 'name email')
+      .sort({ createdAt: -1 });
+
+    const totalRegistered = attendees.length;
+    const checkedInCount = attendees.filter(a => a.checkedIn).length;
+    const totalRevenue = attendees.reduce((sum, a) => sum + (a.amountPaid || 0), 0);
+
+    res.json({
+      eventTitle: event.title,
+      totalRegistered,
+      checkedInCount,
+      totalRevenue,
+      attendees
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ─── Export Event Attendees to CSV ─────────────────────────────────────────────
+router.get('/event/:eventId/export-csv', protect, async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.eventId);
+    if (!event) return res.status(404).send('Event not found');
+
+    if (req.user.role !== 'Admin' && event.manager && event.manager.toString() !== req.user._id.toString()) {
+      return res.status(403).send('Not authorized');
+    }
+
+    const attendees = await Registration.find({ event: req.params.eventId })
+      .populate('user', 'name email')
+      .sort({ createdAt: -1 });
+
+    let csv = 'Ticket Reference,Attendee Name,Email,Ticket Tier,Amount Paid (RWF),Payment Reference,Checked In,Registration Date\n';
+    
+    attendees.forEach(att => {
+      const name = att.user?.name ? `"${att.user.name.replace(/"/g, '""')}"` : '"Guest"';
+      const email = att.user?.email || 'N/A';
+      const tier = att.ticketTier || 'Standard';
+      const amount = att.amountPaid || 0;
+      const tx = att.transactionId || 'N/A';
+      const checked = att.checkedIn ? 'YES' : 'NO';
+      const date = new Date(att.createdAt).toISOString().split('T')[0];
+      csv += `"${att._id}",${name},"${email}","${tier}",${amount},"${tx}",${checked},"${date}"\n`;
+    });
+
+    const safeTitle = event.title.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="attendees_${safeTitle}.csv"`);
+    res.status(200).send(csv);
+  } catch (error) {
+    res.status(500).send('Error generating attendee CSV');
+  }
+});
+
 module.exports = router;
+
