@@ -20,10 +20,12 @@ router.get('/pending', async (req, res) => {
     const bkCount = await Event.countDocuments({ status: 'Pending_Moderation', sourcePlatform: 'bkarena.rw' });
     const sincCount = await Event.countDocuments({ status: 'Pending_Moderation', sourcePlatform: 'sinc.events' });
     const bashCount = await Event.countDocuments({ status: 'Pending_Moderation', sourcePlatform: 'eventsbash.rw' });
+    const ebCount = await Event.countDocuments({ status: 'Pending_Moderation', sourcePlatform: 'eventbrite.com' });
+    const aeCount = await Event.countDocuments({ status: 'Pending_Moderation', sourcePlatform: 'allevents.in' });
 
     res.json({
       totalPending: count,
-      stats: { bkArena: bkCount, sinc: sincCount, eventsBash: bashCount },
+      stats: { bkArena: bkCount, sinc: sincCount, eventsBash: bashCount, eventbrite: ebCount, allEvents: aeCount },
       events
     });
   } catch (error) {

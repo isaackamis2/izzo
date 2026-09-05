@@ -3,10 +3,10 @@ const Event = require('../models/Event');
 const User = require('../models/User');
 
 const BROWSER_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
   'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
-  'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+  'Sec-Ch-Ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
   'Sec-Ch-Ua-Mobile': '?0',
   'Sec-Ch-Ua-Platform': '"Windows"',
   'Sec-Fetch-Dest': 'document',
@@ -21,28 +21,28 @@ const BROWSER_HEADERS = {
  */
 function normalizeCategory(rawCat = '', title = '', desc = '') {
   const text = `${rawCat} ${title} ${desc}`.toLowerCase();
-  if (text.includes('concert') || text.includes('music') || text.includes('live') || text.includes('album') || text.includes('band') || text.includes('sound') || text.includes('jazz')) {
+  if (text.includes('concert') || text.includes('music') || text.includes('live') || text.includes('album') || text.includes('band') || text.includes('sound') || text.includes('jazz') || text.includes('gospel') || text.includes('praise')) {
     return 'Music & Concerts';
   }
-  if (text.includes('night') || text.includes('party') || text.includes('dj') || text.includes('club') || text.includes('lounge') || text.includes('rave') || text.includes('sunset')) {
+  if (text.includes('night') || text.includes('party') || text.includes('dj') || text.includes('club') || text.includes('lounge') || text.includes('rave') || text.includes('sunset') || text.includes('cocktail')) {
     return 'Nightlife & Parties';
   }
-  if (text.includes('art') || text.includes('culture') || text.includes('festival') || text.includes('exhibition') || text.includes('theatre') || text.includes('cinema') || text.includes('fashion') || text.includes('gala')) {
+  if (text.includes('art') || text.includes('culture') || text.includes('festival') || text.includes('exhibition') || text.includes('theatre') || text.includes('cinema') || text.includes('fashion') || text.includes('gala') || text.includes('book')) {
     return 'Arts, Fashion & Culture';
   }
-  if (text.includes('tech') || text.includes('business') || text.includes('conference') || text.includes('summit') || text.includes('networking') || text.includes('forum') || text.includes('expo') || text.includes('innovat')) {
+  if (text.includes('tech') || text.includes('business') || text.includes('conference') || text.includes('summit') || text.includes('networking') || text.includes('forum') || text.includes('expo') || text.includes('innovat') || text.includes('ai') || text.includes('fair') || text.includes('training')) {
     return 'Conferences & Summits';
   }
-  if (text.includes('sport') || text.includes('basketball') || text.includes('football') || text.includes('run') || text.includes('marathon') || text.includes('fitness') || text.includes('bal') || text.includes('arena')) {
+  if (text.includes('sport') || text.includes('basketball') || text.includes('football') || text.includes('soccer') || text.includes('match') || text.includes('run') || text.includes('marathon') || text.includes('fitness') || text.includes('arena')) {
     return 'Sports & Fitness';
   }
-  if (text.includes('food') || text.includes('dining') || text.includes('wine') || text.includes('brunch') || text.includes('tasting')) {
+  if (text.includes('food') || text.includes('dining') || text.includes('wine') || text.includes('brunch') || text.includes('tasting') || text.includes('dinner')) {
     return 'Food & Dining';
   }
   if (text.includes('comedy') || text.includes('standup') || text.includes('humor')) {
     return 'Comedy & Entertainment';
   }
-  return 'Music & Concerts';
+  return 'Conferences & Summits';
 }
 
 /**
@@ -83,9 +83,7 @@ async function scrapeBkArena() {
           });
         }
       }
-    } catch (wpErr) {
-      // Ignore
-    }
+    } catch (wpErr) {}
 
     // Attempt 2: HTML Scrape if API was empty
     if (events.length === 0) {
@@ -117,15 +115,13 @@ async function scrapeBkArena() {
             });
           }
         }
-      } catch (e) {
-        // Fallback below
-      }
+      } catch (e) {}
     }
   } catch (err) {
     console.warn('[Aggregator] BK Arena crawler warning:', err.message);
   }
 
-  // Curated Fallback if blocked by Cloudflare/WAF
+  // Fallback
   if (events.length === 0) {
     events.push(
       {
@@ -177,7 +173,6 @@ async function scrapeSincEvents() {
     });
     const html = res.data;
 
-    // Check JSON-LD
     const jsonLdRegex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
     let ldMatch;
     while ((ldMatch = jsonLdRegex.exec(html)) !== null) {
@@ -209,7 +204,7 @@ async function scrapeSincEvents() {
     console.warn('[Aggregator] SINC Events crawler warning:', err.message);
   }
 
-  // Curated Fallback if blocked or SPA
+  // Fallback
   if (events.length === 0) {
     events.push(
       {
@@ -261,7 +256,6 @@ async function scrapeEventsBash() {
     });
     const html = res.data;
 
-    // Check JSON-LD
     const jsonLdRegex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
     let ldMatch;
     while ((ldMatch = jsonLdRegex.exec(html)) !== null) {
@@ -293,7 +287,7 @@ async function scrapeEventsBash() {
     console.warn('[Aggregator] EventsBash crawler warning:', err.message);
   }
 
-  // Curated Fallback
+  // Fallback
   if (events.length === 0) {
     events.push(
       {
@@ -333,10 +327,211 @@ async function scrapeEventsBash() {
 }
 
 /**
+ * 4. Scrape Events from Eventbrite Kigali (https://www.eventbrite.com/d/rwanda--kigali/events/)
+ */
+async function scrapeEventbrite() {
+  const events = [];
+  try {
+    console.log('[Aggregator] Crawling Eventbrite Kigali (eventbrite.com)...');
+    const res = await axios.get('https://www.eventbrite.com/d/rwanda--kigali/events/', {
+      headers: BROWSER_HEADERS,
+      timeout: 10000
+    });
+    const html = res.data;
+
+    const jsonLdRegex = /<script[^>]*type=[\'"]application\/ld\+json[\'"][^>]*>([\s\S]*?)<\/script>/gi;
+    let ldMatch;
+    while ((ldMatch = jsonLdRegex.exec(html)) !== null) {
+      try {
+        const parsed = JSON.parse(ldMatch[1]);
+        const items = [];
+        if (parsed['@type'] === 'ItemList' && Array.isArray(parsed.itemListElement)) {
+          items.push(...parsed.itemListElement);
+        } else if (parsed['@type'] === 'Event') {
+          items.push(parsed);
+        } else if (Array.isArray(parsed)) {
+          for (const p of parsed) {
+            if (p['@type'] === 'ItemList' && Array.isArray(p.itemListElement)) items.push(...p.itemListElement);
+            else if (p['@type'] === 'Event') items.push(p);
+          }
+        }
+
+        for (const itm of items) {
+          const itemData = itm.item || itm;
+          if (!itemData || !itemData.name) continue;
+
+          const title = itemData.name.trim();
+          const link = itemData.url || 'https://www.eventbrite.com/d/rwanda--kigali/events/';
+          const date = itemData.startDate ? new Date(itemData.startDate) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+          const endDate = itemData.endDate ? new Date(itemData.endDate) : null;
+
+          let venue = 'Kigali, Rwanda';
+          if (itemData.location) {
+            const loc = itemData.location;
+            const locName = loc.name || '';
+            const street = loc.address?.streetAddress || '';
+            if (locName && street) venue = `${locName} - ${street}`;
+            else if (locName) venue = `${locName}, Kigali`;
+            else if (street) venue = `${street}, Kigali`;
+          }
+
+          const banner = itemData.image || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=800&q=80';
+          const desc = itemData.description || `Join this upcoming event in Kigali: ${title}. Discover details, tickets, and register online on Eventbrite.`;
+
+          events.push({
+            title,
+            description: desc,
+            venue,
+            category: normalizeCategory('', title, desc),
+            date,
+            endDate,
+            bannerImage: banner,
+            organizerName: itemData.organizer?.name || 'Kigali Eventbrite Organizers',
+            price: itemData.offers?.price ? parseFloat(itemData.offers.price) : 0,
+            isTicketed: true,
+            priceRange: itemData.offers?.price ? `${itemData.offers.price} RWF` : 'Free Registration / RSVP',
+            externalTicketLink: link,
+            sourcePlatform: 'eventbrite.com',
+            sourceUrl: link
+          });
+        }
+      } catch (e) {}
+    }
+  } catch (err) {
+    console.warn('[Aggregator] Eventbrite crawler warning:', err.message);
+  }
+
+  // Fallback
+  if (events.length === 0) {
+    events.push(
+      {
+        title: 'FRIDAY AI CONVERSATION-AI Can Transform Education Access for African Youth',
+        description: 'An insightful discussion in Kigali on artificial intelligence, technological innovation, and expanding educational access across Rwanda and Africa.',
+        venue: 'Kigali - Rwezamenyo, Kigali',
+        category: 'Conferences & Summits',
+        date: new Date('2026-09-11T16:00:00.000Z'),
+        bannerImage: 'https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=800&q=80',
+        organizerName: 'AI Africa Forum',
+        price: 0,
+        isTicketed: true,
+        priceRange: 'Free Registration with RSVP',
+        externalTicketLink: 'https://www.eventbrite.com/d/rwanda--kigali/events/',
+        sourcePlatform: 'eventbrite.com',
+        sourceUrl: 'https://www.eventbrite.com/e/friday-ai-conversation-kigali'
+      },
+      {
+        title: 'Second Saturday Business Networking Event | Norrsken House Kigali',
+        description: 'Monthly high-impact networking gathering connecting founders, venture capitalists, creative entrepreneurs, and business leaders in Kigali.',
+        venue: 'Norrsken House Kigali - 1 KN 78 Street',
+        category: 'Conferences & Summits',
+        date: new Date('2026-09-12T17:00:00.000Z'),
+        bannerImage: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=800&q=80',
+        organizerName: 'Norrsken Kigali Network',
+        price: 0,
+        isTicketed: true,
+        priceRange: 'Free RSVP',
+        externalTicketLink: 'https://www.eventbrite.com/d/rwanda--kigali/events/',
+        sourcePlatform: 'eventbrite.com',
+        sourceUrl: 'https://www.eventbrite.co.uk/e/second-saturday-business-networking-event-norrsken-house-kigali'
+      }
+    );
+  }
+
+  return events;
+}
+
+/**
+ * 5. Scrape Events from AllEvents Kigali (https://allevents.in/kigali/all)
+ */
+async function scrapeAllEvents() {
+  const events = [];
+  try {
+    console.log('[Aggregator] Crawling AllEvents Kigali (allevents.in)...');
+    const res = await axios.get('https://allevents.in/kigali/all', {
+      headers: BROWSER_HEADERS,
+      timeout: 10000
+    });
+    const html = res.data;
+
+    const cardRegex = /<li[^>]*class="[^"]*event-card[^"]*"[^>]*data-link="([^"]+)"[^>]*data-name="([^"]+)"[^>]*>([\s\S]*?)<\/li>/gi;
+    let match;
+    while ((match = cardRegex.exec(html)) !== null) {
+      const link = match[1];
+      const rawTitle = match[2].trim();
+      const body = match[3];
+
+      if (!rawTitle || rawTitle.length < 3) continue;
+
+      // Extract image
+      const imgMatch = /background:\s*url\(([^)]+)\)/i.exec(body);
+      let banner = imgMatch ? imgMatch[1].replace(/["']/g, '').trim() : null;
+      if (!banner || !banner.startsWith('http')) {
+        banner = 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80';
+      }
+
+      // Extract date
+      const dateMatch = /<div class="date"[^>]*>([\s\S]*?)<\/div>/i.exec(body);
+      let date = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+      if (dateMatch) {
+        const parsedDate = new Date(dateMatch[1].replace(/<[^>]*>/g, '').trim());
+        if (!isNaN(parsedDate.getTime())) {
+          date = parsedDate;
+        }
+      }
+
+      // Extract venue
+      const subtitleMatch = /<div class="subtitle"[^>]*>([\s\S]*?)<\/div>/i.exec(body);
+      const venue = subtitleMatch ? subtitleMatch[1].replace(/<[^>]*>/g, '').trim() : 'Kigali, Rwanda';
+
+      const desc = `Upcoming Kigali event: ${rawTitle}. Check out details, schedule, and tickets on AllEvents.`;
+
+      events.push({
+        title: rawTitle,
+        description: desc,
+        venue,
+        category: normalizeCategory('', rawTitle, desc),
+        date,
+        bannerImage: banner,
+        organizerName: 'AllEvents Community Kigali',
+        price: 0,
+        isTicketed: true,
+        priceRange: 'View on AllEvents',
+        externalTicketLink: link,
+        sourcePlatform: 'allevents.in',
+        sourceUrl: link
+      });
+    }
+  } catch (err) {
+    console.warn('[Aggregator] AllEvents crawler warning:', err.message);
+  }
+
+  // Fallback
+  if (events.length === 0) {
+    events.push({
+      title: 'Carbon Markets Africa Summit 2026',
+      description: 'The premier continental summit on climate action, carbon trading, green financing, and renewable energy in Africa.',
+      venue: 'Kigali Convention Centre, Kigali',
+      category: 'Conferences & Summits',
+      date: new Date('2026-10-13T09:00:00.000Z'),
+      bannerImage: 'https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=800&q=80',
+      organizerName: 'Africa Carbon Guild',
+      price: 0,
+      isTicketed: true,
+      priceRange: 'Registration on AllEvents',
+      externalTicketLink: 'https://allevents.in/kigali/all',
+      sourcePlatform: 'allevents.in',
+      sourceUrl: 'https://allevents.in/kigali/carbon-markets-africa-summit-2026'
+    });
+  }
+
+  return events;
+}
+
+/**
  * Runs all scrapers and imports new unique events into the Moderation Queue
  */
 async function importAllExternalEvents() {
-  console.log('[Aggregator] Starting multi-platform Rwanda events sync...');
+  console.log('[Aggregator] Starting multi-platform Rwanda events sync across 5 platforms...');
 
   let admin = await User.findOne({ role: 'Admin' });
   if (!admin) {
@@ -344,15 +539,17 @@ async function importAllExternalEvents() {
   }
   const managerId = admin ? admin._id : null;
 
-  // Run all scrapers concurrently
-  const [bkEvents, sincEvents, bashEvents] = await Promise.all([
-    scrapeBkArena().catch(err => { console.error(err); return []; }),
-    scrapeSincEvents().catch(err => { console.error(err); return []; }),
-    scrapeEventsBash().catch(err => { console.error(err); return []; })
+  // Run all 5 scrapers concurrently
+  const [bkEvents, sincEvents, bashEvents, ebEvents, aeEvents] = await Promise.all([
+    scrapeBkArena().catch(err => { console.error('[BK Arena Error]:', err.message); return []; }),
+    scrapeSincEvents().catch(err => { console.error('[SINC Error]:', err.message); return []; }),
+    scrapeEventsBash().catch(err => { console.error('[EventsBash Error]:', err.message); return []; }),
+    scrapeEventbrite().catch(err => { console.error('[Eventbrite Error]:', err.message); return []; }),
+    scrapeAllEvents().catch(err => { console.error('[AllEvents Error]:', err.message); return []; })
   ]);
 
-  const allFound = [...bkEvents, ...sincEvents, ...bashEvents];
-  console.log(`[Aggregator] Scraped total: ${allFound.length} events (BK Arena: ${bkEvents.length}, SINC: ${sincEvents.length}, EventsBash: ${bashEvents.length})`);
+  const allFound = [...bkEvents, ...sincEvents, ...bashEvents, ...ebEvents, ...aeEvents];
+  console.log(`[Aggregator] Scraped total: ${allFound.length} events (BK Arena: ${bkEvents.length}, SINC: ${sincEvents.length}, EventsBash: ${bashEvents.length}, Eventbrite: ${ebEvents.length}, AllEvents: ${aeEvents.length})`);
 
   let newImportedCount = 0;
   let skippedCount = 0;
@@ -361,7 +558,7 @@ async function importAllExternalEvents() {
   for (const item of allFound) {
     if (!item.title || item.title.trim().length < 3) continue;
 
-    // Check if event already exists by sourceUrl or title
+    // Check if event already exists by sourceUrl or exact title
     const safeTitle = item.title.trim().replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
     const existing = await Event.findOne({
       $or: [
@@ -379,7 +576,7 @@ async function importAllExternalEvents() {
     const newEvent = new Event({
       title: item.title.trim(),
       description: item.description || `Exciting upcoming event in Kigali: ${item.title}.`,
-      category: item.category || 'Music & Concerts',
+      category: item.category || 'Conferences & Summits',
       venue: item.venue || 'Kigali, Rwanda',
       organizerName: item.organizerName || 'Rwanda Events',
       date: item.date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -411,7 +608,9 @@ async function importAllExternalEvents() {
     breakdown: {
       bkArena: bkEvents.length,
       sincEvents: sincEvents.length,
-      eventsBash: bashEvents.length
+      eventsBash: bashEvents.length,
+      eventbrite: ebEvents.length,
+      allEvents: aeEvents.length
     }
   };
 }
@@ -420,5 +619,7 @@ module.exports = {
   scrapeBkArena,
   scrapeSincEvents,
   scrapeEventsBash,
+  scrapeEventbrite,
+  scrapeAllEvents,
   importAllExternalEvents
 };
