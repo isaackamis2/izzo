@@ -13,7 +13,9 @@ const userSchema = new mongoose.Schema({
     twitter: { type: String, default: '' },
     instagram: { type: String, default: '' },
     website: { type: String, default: '' }
-  }
+  },
+  resetPasswordToken: { type: String },
+  resetPasswordExpires: { type: Date }
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

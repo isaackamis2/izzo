@@ -1,6 +1,9 @@
 const express = require('express');
 const Registration = require('../models/Registration');
 const Event = require('../models/Event');
+const User = require('../models/User');
+const QRCode = require('qrcode');
+const { sendTicketEmail, notifyNewRegistration } = require('../utils/mailer');
 const router = express.Router();
 
 // Register for event
@@ -21,8 +24,17 @@ router.post('/:eventId', async (req, res) => {
 
     if (!event) return res.status(400).json({ message: 'Event is sold out!' });
 
-    const registration = new Registration({ user: userId, event: eventId });
+    const ticketData = JSON.stringify({ userId, eventId, type: 'Standard' });
+    const qrCode = await QRCode.toDataURL(ticketData).catch(() => '');
+
+    const registration = new Registration({ user: userId, event: eventId, qrCode, status: 'Registered' });
     await registration.save();
+
+    const user = await User.findById(userId);
+    if (user) {
+      sendTicketEmail(user, event, registration).catch(console.error);
+      notifyNewRegistration(user, event, registration).catch(console.error);
+    }
 
     res.status(201).json({ message: 'Successfully registered', registration });
   } catch (error) {

@@ -24,7 +24,18 @@ const eventSchema = new mongoose.Schema({
     price: Number
   }],
   priceRange: { type: String }, // e.g., "5000 RWF - 15000 RWF"
-  externalTicketLink: { type: String } // URL or instructions if not using MoMo
+  externalTicketLink: { type: String }, // URL or instructions if not using MoMo
+  status: { 
+    type: String, 
+    enum: ['Published', 'Pending_Moderation', 'Rejected'], 
+    default: 'Published' 
+  },
+  sourcePlatform: { 
+    type: String, 
+    default: 'Manual' 
+  }, // 'sinc.events', 'bkarena.rw', 'eventsbash.rw', 'Manual'
+  sourceUrl: { type: String, default: '' },
+  importedAt: { type: Date }
 }, {  
   timestamps: true,
   optimisticConcurrency: true
