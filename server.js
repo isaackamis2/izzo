@@ -22,6 +22,8 @@ const uploadRoutes = require('./routes/uploadRoutes');
 const userRoutes = require('./routes/userRoutes');
 const ticketRoutes = require('./routes/ticketRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
+const moderationRoutes = require('./routes/moderationRoutes');
+const contactRoutes = require('./routes/contactRoutes');
 const scheduleRecurringEvents = require('./cron/recurringEvents');
 
 app.use('/api/auth', authRoutes);
@@ -32,6 +34,31 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/moderation', moderationRoutes);
+app.use('/api/contact', contactRoutes);
+
+// Dynamic Sitemap Generation for Search Engines (SEO)
+app.get('/sitemap.xml', async (req, res) => {
+  try {
+    const Event = require('./models/Event');
+    const events = await Event.find({ status: { $nin: ['Pending_Moderation', 'Rejected'] } });
+    const frontendBase = process.env.FRONTEND_URL || 'https://izzoevents.com';
+
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+    xml += `  <url>\n    <loc>${frontendBase}/</loc>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n`;
+
+    for (const e of events) {
+      const lastmod = (e.updatedAt || e.createdAt || new Date()).toISOString().split('T')[0];
+      xml += `  <url>\n    <loc>${frontendBase}/events/${e._id}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
+    }
+
+    xml += `</urlset>`;
+    res.header('Content-Type', 'application/xml');
+    res.send(xml);
+  } catch (error) {
+    res.status(500).send('Error generating sitemap');
+  }
+});
 
 const PORT = process.env.PORT || 5000;
 
