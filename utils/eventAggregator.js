@@ -243,6 +243,17 @@ async function scrapeSincEvents() {
   return events;
 }
 
+function unescapeHtml(str = '') {
+  return str
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#039;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
+}
+
 /**
  * 3. Scrape Events from EventsBash Rwanda (https://eventsbash.rw/)
  */
@@ -250,75 +261,118 @@ async function scrapeEventsBash() {
   const events = [];
   try {
     console.log('[Aggregator] Crawling EventsBash Rwanda (eventsbash.rw)...');
-    const res = await axios.get('https://eventsbash.rw/', {
-      headers: BROWSER_HEADERS,
-      timeout: 8000
-    });
-    const html = res.data;
 
-    const jsonLdRegex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
-    let ldMatch;
-    while ((ldMatch = jsonLdRegex.exec(html)) !== null) {
+    // Scrape page 1 and page 2 (each contains up to 15 events)
+    for (const page of [1, 2]) {
       try {
-        const parsed = JSON.parse(ldMatch[1]);
-        const items = Array.isArray(parsed) ? parsed : (parsed['@graph'] || [parsed]);
-        for (const item of items) {
-          if (item['@type'] === 'Event' || item.type === 'Event') {
+        const url = `https://eventsbash.rw/?page=${page}`;
+        const res = await axios.get(url, {
+          headers: BROWSER_HEADERS,
+          timeout: 10000
+        });
+        const html = res.data;
+
+        // EventsBash embeds its event collection inside the Vue component :events prop
+        const match = /:events=['"]([^'"]+)['"]/.exec(html);
+        if (match) {
+          const decoded = unescapeHtml(match[1]);
+          const parsed = JSON.parse(decoded);
+          const rawEvents = parsed.data || [];
+
+          for (const item of rawEvents) {
+            if (!item.name || item.name.trim().length < 3) continue;
+
+            let date = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+            if (item.start_date) {
+              const timeStr = item.start_time || '18:00:00';
+              const parsedDate = new Date(`${item.start_date}T${timeStr}`);
+              if (!isNaN(parsedDate.getTime())) {
+                date = parsedDate;
+              }
+            }
+
+            let endDate = null;
+            if (item.end_date) {
+              const timeStr = item.end_time || '23:00:00';
+              const parsedEnd = new Date(`${item.end_date}T${timeStr}`);
+              if (!isNaN(parsedEnd.getTime())) {
+                endDate = parsedEnd;
+              }
+            }
+
+            const banner = item.image || 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=800&q=80';
+            const link = item.event_url || (item.slug ? `https://eventsbash.rw/events/${item.slug}` : `https://eventsbash.rw/#event-${item.id}`);
+            const venue = item.venue && item.venue !== 'None' ? item.venue : 'Kigali, Rwanda';
+
+            // Parse entry price
+            let price = 0;
+            if (item.entrance_cost) {
+              const priceMatch = /(\d[\d,.]*)/.exec(item.entrance_cost);
+              if (priceMatch) {
+                price = parseInt(priceMatch[1].replace(/,/g, ''), 10) || 0;
+              }
+            }
+
+            const desc = item.description || item.summary || `Join ${item.name} in Kigali. Event schedule, tickets, and entry details on EventsBash Rwanda.`;
+
             events.push({
-              title: item.name || 'EventsBash Kigali Event',
-              description: item.description || 'Upcoming Kigali event on EventsBash Rwanda.',
-              venue: item.location?.name || 'Kigali, Rwanda',
-              category: normalizeCategory('', item.name, item.description),
-              date: item.startDate ? new Date(item.startDate) : new Date(Date.now() + 9 * 24 * 60 * 60 * 1000),
-              bannerImage: item.image || 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=800&q=80',
-              organizerName: item.organizer?.name || 'EventsBash Rwanda',
-              price: item.offers?.price ? parseFloat(item.offers.price) : 5000,
+              title: item.name.trim(),
+              description: desc,
+              venue,
+              category: normalizeCategory('', item.name, desc),
+              date,
+              endDate,
+              bannerImage: banner,
+              organizerName: item.submitter_name || 'EventsBash Rwanda',
+              price,
               isTicketed: true,
-              priceRange: 'Tickets on EventsBash',
-              externalTicketLink: item.url || 'https://eventsbash.rw/',
+              priceRange: item.entrance_cost || (price > 0 ? `${price.toLocaleString()} RWF` : 'Free Entry'),
+              externalTicketLink: link,
               sourcePlatform: 'eventsbash.rw',
-              sourceUrl: item.url || 'https://eventsbash.rw/'
+              sourceUrl: link
             });
           }
         }
-      } catch (e) {}
+      } catch (pageErr) {
+        console.warn(`[Aggregator] EventsBash page ${page} warning:`, pageErr.message);
+      }
     }
   } catch (err) {
     console.warn('[Aggregator] EventsBash crawler warning:', err.message);
   }
 
-  // Fallback
+  // Fallback if network blocked
   if (events.length === 0) {
     events.push(
       {
-        title: 'Kigali Gourmet Food, Wine & Cultural Festival',
-        description: 'Taste artisan Rwandan dishes, local wines, and international flavors with live acoustic performances and family entertainment.',
-        venue: 'Kigali Cultural Village, Rebero',
-        category: 'Food & Dining',
-        date: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
-        bannerImage: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=800&q=80',
-        organizerName: 'EventsBash Culinary Team',
-        price: 3000,
+        title: 'Flick Movie Night: The Last Sunrise & Just Play Dead',
+        description: 'Cinematic indie film screening and community discussion at Kigali Universe.',
+        venue: 'Kigali Universe',
+        category: 'Arts, Fashion & Culture',
+        date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+        bannerImage: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=800&q=80',
+        organizerName: 'Kigali Universe & EventsBash',
+        price: 5000,
         isTicketed: true,
-        priceRange: '3,000 - 15,000 RWF',
+        priceRange: '5,000 - 15,000 RWF',
         externalTicketLink: 'https://eventsbash.rw/',
         sourcePlatform: 'eventsbash.rw',
-        sourceUrl: 'https://eventsbash.rw/event/kigali-food-wine-fest'
+        sourceUrl: 'https://eventsbash.rw/events/flick-movie-night'
       },
       {
-        title: 'Rwanda Fashion & High-Street Runway 2026',
-        description: 'Showcasing East Africa most talented designers, models, and eco-fashion artisans live in Kigali.',
-        venue: 'Kigali Serena Hotel Ballroom',
-        category: 'Arts, Fashion & Culture',
-        date: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000),
-        bannerImage: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=800&q=80',
-        organizerName: 'EventsBash Fashion Guild',
-        price: 15000,
+        title: 'Brains & Bottles: Beyond The Bottle',
+        description: 'An evening of high-level intellectual conversation, networking, and fine beverage tasting in Kigali.',
+        venue: 'Kigali, Rwanda',
+        category: 'Food & Dining',
+        date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+        bannerImage: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=800&q=80',
+        organizerName: 'EventsBash Community',
+        price: 3000,
         isTicketed: true,
-        priceRange: '15,000 - 50,000 RWF VIP',
+        priceRange: '3,000 RWF',
         externalTicketLink: 'https://eventsbash.rw/',
         sourcePlatform: 'eventsbash.rw',
-        sourceUrl: 'https://eventsbash.rw/event/rwanda-fashion-runway'
+        sourceUrl: 'https://eventsbash.rw/events/brains-and-bottles'
       }
     );
   }
