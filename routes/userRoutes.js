@@ -50,7 +50,8 @@ router.delete('/:id', requireAdmin, async (req, res) => {
   try {
     // Prevent deleting the very first admin as a safety measure
     const user = await User.findById(req.params.id);
-    if (user && user.email === 'superadmin@eventflow.com') {
+    const superEmails = ['isaackamis@gmail.com', 'superadmin@eventflow.com', (process.env.ADMIN_EMAIL || '').toLowerCase().trim()];
+    if (user && superEmails.includes(user.email.toLowerCase())) {
       return res.status(400).json({ message: 'Cannot delete the primary Super Admin' });
     }
     

@@ -87,12 +87,13 @@ async function startServer() {
     if (userCount === 0) {
       await Settings.create({ logoUrl: '', siteName: 'IzzoEvents' });
       
-      const adminHash = await bcrypt.hash('Admin@1234', 10);
-      const managerHash = await bcrypt.hash('Manager@1234', 10);
+      const defaultAdminPass = process.env.ADMIN_INITIAL_PASSWORD || 'IzzoAdmin#2026!Rwanda';
+      const adminHash = await bcrypt.hash(defaultAdminPass, 10);
+      const managerHash = await bcrypt.hash(process.env.MANAGER_INITIAL_PASSWORD || 'IzzoManager#2026!Kigali', 10);
 
       const superAdmin = await User.create({
         name: 'Super Admin',
-        email: 'superadmin@eventflow.com',
+        email: process.env.ADMIN_EMAIL || 'isaackamis@gmail.com',
         password: adminHash,
         role: 'Admin',
         isVerified: true,
@@ -107,8 +108,8 @@ async function startServer() {
       });
 
       console.log('=================================================');
-      console.log('  SUPER ADMIN  → superadmin@eventflow.com / Admin@1234');
-      console.log('  MANAGER      → manager@eventflow.com / Manager@1234');
+      console.log(`  SUPER ADMIN  → ${process.env.ADMIN_EMAIL || 'isaackamis@gmail.com'}`);
+      console.log('  MANAGER      → manager@eventflow.com');
       console.log('=================================================');
 
       await Event.create([
