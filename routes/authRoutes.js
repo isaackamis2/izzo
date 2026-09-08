@@ -153,6 +153,7 @@ router.post('/google', async (req, res) => {
     const googleId = payload.sub;
 
     let user = await User.findOne({ email: cleanEmail });
+    const isAdminEmail = cleanEmail === (process.env.ADMIN_EMAIL || 'isaackamis@gmail.com').toLowerCase().trim() || cleanEmail === 'superadmin@eventflow.com';
 
     if (user) {
       // Existing user: Link Google ID and update avatar if empty
@@ -163,6 +164,10 @@ router.post('/google', async (req, res) => {
       }
       if (!user.avatar && picture) {
         user.avatar = picture;
+        updated = true;
+      }
+      if (isAdminEmail && user.role !== 'Admin') {
+        user.role = 'Admin';
         updated = true;
       }
       if (updated) {
@@ -178,7 +183,7 @@ router.post('/google', async (req, res) => {
         name,
         email: cleanEmail,
         password: hashedPassword,
-        role: 'User',
+        role: isAdminEmail ? 'Admin' : 'User',
         avatar: picture,
         googleId,
         authProvider: 'google',
