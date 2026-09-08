@@ -313,7 +313,17 @@ async function scrapeEventsBash() {
               }
             }
 
-            const desc = item.description || item.summary || `Join ${item.name} in Kigali. Event schedule, tickets, and entry details on EventsBash Rwanda.`;
+            const desc = item.description || item.summary || `Join ${item.name} in Kigali. Event schedule, tickets, and entry details listed on eventsbash.rw.`;
+
+            // eventsbash.rw is an Event Listing directory, NOT the event organizer
+            let derivedOrganizer = item.submitter_name ? item.submitter_name.trim() : '';
+            if (!derivedOrganizer || /eventsbash/i.test(derivedOrganizer)) {
+              if (venue && venue !== 'Kigali, Rwanda' && venue !== 'None') {
+                derivedOrganizer = venue;
+              } else {
+                derivedOrganizer = 'Event Host';
+              }
+            }
 
             events.push({
               title: item.name.trim(),
@@ -323,7 +333,7 @@ async function scrapeEventsBash() {
               date,
               endDate,
               bannerImage: banner,
-              organizerName: item.submitter_name || 'EventsBash Rwanda',
+              organizerName: derivedOrganizer,
               price,
               isTicketed: true,
               priceRange: item.entrance_cost || (price > 0 ? `${price.toLocaleString()} RWF` : 'Free Entry'),
@@ -351,7 +361,7 @@ async function scrapeEventsBash() {
         category: 'Arts, Fashion & Culture',
         date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
         bannerImage: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=800&q=80',
-        organizerName: 'Kigali Universe & EventsBash',
+        organizerName: 'Kigali Universe Cinema',
         price: 5000,
         isTicketed: true,
         priceRange: '5,000 - 15,000 RWF',
@@ -366,7 +376,7 @@ async function scrapeEventsBash() {
         category: 'Food & Dining',
         date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
         bannerImage: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=800&q=80',
-        organizerName: 'EventsBash Community',
+        organizerName: 'Brains & Bottles Kigali',
         price: 3000,
         isTicketed: true,
         priceRange: '3,000 RWF',

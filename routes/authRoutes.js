@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const axios = require('axios');
 const User = require('../models/User');
 const { notifyNewUserSignup, sendPasswordResetEmail } = require('../utils/mailer');
 
@@ -44,7 +45,7 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign(
       { id: user._id, role: user.role }, 
       process.env.JWT_SECRET || 'fallback_secret', 
-      { expiresIn: '1d' }
+      { expiresIn: '30d' }
     );
 
     res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
@@ -119,6 +120,96 @@ router.post('/reset-password', async (req, res) => {
   } catch (error) {
     console.error('Reset password error:', error);
     res.status(500).json({ message: 'Server error resetting password' });
+  }
+});
+
+// ─── Google OAuth Sign-in & Sign-up ──────────────────────────────────────────
+router.post('/google', async (req, res) => {
+  try {
+    const { credential } = req.body;
+    if (!credential) {
+      return res.status(400).json({ message: 'Google credential token is required' });
+    }
+
+    // Verify token with Google's tokeninfo API
+    let payload;
+    try {
+      const googleRes = await axios.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`, {
+        timeout: 10000
+      });
+      payload = googleRes.data;
+    } catch (gErr) {
+      console.error('[Google Auth] Token verification failed:', gErr.response?.data || gErr.message);
+      return res.status(401).json({ message: 'Google authentication failed or expired token. Please try again.' });
+    }
+
+    if (!payload || !payload.email) {
+      return res.status(400).json({ message: 'Invalid Google account data received' });
+    }
+
+    const cleanEmail = payload.email.trim().toLowerCase();
+    const name = payload.name || payload.given_name || cleanEmail.split('@')[0];
+    const picture = payload.picture || '';
+    const googleId = payload.sub;
+
+    let user = await User.findOne({ email: cleanEmail });
+
+    if (user) {
+      // Existing user: Link Google ID and update avatar if empty
+      let updated = false;
+      if (!user.googleId) {
+        user.googleId = googleId;
+        updated = true;
+      }
+      if (!user.avatar && picture) {
+        user.avatar = picture;
+        updated = true;
+      }
+      if (updated) {
+        await user.save();
+      }
+    } else {
+      // New user registering via Google
+      const randomPassword = crypto.randomBytes(32).toString('hex');
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(randomPassword, salt);
+
+      user = new User({
+        name,
+        email: cleanEmail,
+        password: hashedPassword,
+        role: 'User',
+        avatar: picture,
+        googleId,
+        authProvider: 'google',
+        isVerified: true
+      });
+      await user.save();
+
+      // Trigger admin notification email
+      notifyNewUserSignup(user).catch(console.error);
+    }
+
+    // Generate 30-day session token
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET || 'fallback_secret',
+      { expiresIn: '30d' }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        avatar: user.avatar || picture
+      }
+    });
+  } catch (error) {
+    console.error('[Google Auth] Server error:', error);
+    res.status(500).json({ message: 'Internal server error during Google authentication' });
   }
 });
 
