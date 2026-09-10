@@ -34,6 +34,8 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/traffic-insights', analyticsRoutes);
+app.use('/api/stats', analyticsRoutes);
 app.use('/api/moderation', moderationRoutes);
 app.use('/api/contact', contactRoutes);
 
