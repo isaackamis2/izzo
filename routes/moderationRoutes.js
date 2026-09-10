@@ -11,7 +11,11 @@ router.get('/pending', async (req, res) => {
     const { platform } = req.query;
     let query = { status: 'Pending_Moderation' };
     if (platform && platform !== 'all') {
-      query.sourcePlatform = platform;
+      if (platform === 'instagram') {
+        query.sourcePlatform = /instagram/i;
+      } else {
+        query.sourcePlatform = platform;
+      }
     }
     const events = await Event.find(query).sort({ importedAt: -1, createdAt: -1 });
     const count = await Event.countDocuments({ status: 'Pending_Moderation' });
@@ -22,10 +26,11 @@ router.get('/pending', async (req, res) => {
     const bashCount = await Event.countDocuments({ status: 'Pending_Moderation', sourcePlatform: 'eventsbash.rw' });
     const ebCount = await Event.countDocuments({ status: 'Pending_Moderation', sourcePlatform: 'eventbrite.com' });
     const aeCount = await Event.countDocuments({ status: 'Pending_Moderation', sourcePlatform: 'allevents.in' });
+    const instaCount = await Event.countDocuments({ status: 'Pending_Moderation', sourcePlatform: /instagram/i });
 
     res.json({
       totalPending: count,
-      stats: { bkArena: bkCount, sinc: sincCount, eventsBash: bashCount, eventbrite: ebCount, allEvents: aeCount },
+      stats: { bkArena: bkCount, sinc: sincCount, eventsBash: bashCount, eventbrite: ebCount, allEvents: aeCount, instagram: instaCount },
       events
     });
   } catch (error) {
