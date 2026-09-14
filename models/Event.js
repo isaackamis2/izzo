@@ -35,7 +35,10 @@ const eventSchema = new mongoose.Schema({
     default: 'Manual' 
   }, // 'sinc.events', 'bkarena.rw', 'eventsbash.rw', 'Manual'
   sourceUrl: { type: String, default: '' },
-  importedAt: { type: Date }
+  importedAt: { type: Date },
+  isSponsored: { type: Boolean, default: false },
+  sponsoredUntil: { type: Date },
+  sponsorshipTier: { type: String, default: 'Standard' }
 }, {  
   timestamps: true,
   optimisticConcurrency: true

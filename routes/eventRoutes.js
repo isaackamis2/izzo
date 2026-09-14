@@ -209,4 +209,29 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// PATCH sponsor an event (Admin / Manager)
+router.patch('/:id/sponsor', async (req, res) => {
+  try {
+    const { isSponsored, sponsorshipTier, durationDays } = req.body;
+    let sponsoredUntil = null;
+    if (isSponsored) {
+      const days = parseInt(durationDays) || 7;
+      sponsoredUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+    }
+    const updated = await Event.findByIdAndUpdate(
+      req.params.id,
+      {
+        isSponsored: Boolean(isSponsored),
+        sponsorshipTier: sponsorshipTier || 'Gold',
+        sponsoredUntil: isSponsored ? sponsoredUntil : null
+      },
+      { new: true }
+    );
+    if (!updated) return res.status(404).json({ message: 'Event not found' });
+    res.json({ success: true, event: updated });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 module.exports = router;

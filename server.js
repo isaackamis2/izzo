@@ -24,6 +24,8 @@ const ticketRoutes = require('./routes/ticketRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const moderationRoutes = require('./routes/moderationRoutes');
 const contactRoutes = require('./routes/contactRoutes');
+const pushRoutes = require('./routes/pushRoutes');
+const scheduleScraperCron = require('./cron/scraperCron');
 const scheduleRecurringEvents = require('./cron/recurringEvents');
 
 app.use('/api/auth', authRoutes);
@@ -41,6 +43,7 @@ app.use('/api/portal', analyticsRoutes);
 app.use('/api/core', analyticsRoutes);
 app.use('/api/moderation', moderationRoutes);
 app.use('/api/contact', contactRoutes);
+app.use('/api/push', pushRoutes);
 
 // Dynamic Sitemap Generation for Search Engines (SEO)
 app.get('/sitemap.xml', async (req, res) => {
@@ -81,6 +84,7 @@ async function startServer() {
   
   // Initialize cron jobs
   scheduleRecurringEvents();
+  scheduleScraperCron();
     
   // Seed some initial events if DB is empty
     // Seed users and events if DB is empty

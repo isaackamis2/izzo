@@ -27,6 +27,7 @@
     "nodemailer": "^9.0.3",
     "qrcode": "^1.5.4",
     "twitter-api-v2": "^1.29.1",
+    "web-push": "^3.6.7",
     "zod": "^4.4.3"
   }
 }

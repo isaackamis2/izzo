@@ -479,6 +479,64 @@ async function sendContactReplyEmail(userEmail, userName, originalSubject, reply
   }
 }
 
+/**
+ * Sends notification to Admin when scraper imports events into Moderation Queue
+ */
+async function notifyModerationBatch(importedCount, sampleEvents = []) {
+  try {
+    const transporter = getTransporter();
+    if (!transporter) return;
+
+    const adminEmail = await getAdminNotificationEmail();
+    if (!adminEmail) return;
+
+    const titlesHtml = (sampleEvents || []).slice(0, 5).map(e => `
+      <li style="margin-bottom: 8px; color: #FFFFFF;">
+        <strong>${e.title}</strong> <span style="color: #94A3B8; font-size: 12px;">(${e.venue || 'Kigali'} &bull; ${e.sourcePlatform || 'Web'})</span>
+      </li>
+    `).join('');
+
+    const htmlContent = `
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #161E2C; color: #FFFFFF; border-radius: 16px; overflow: hidden; border: 1px solid #2B384E;">
+        <div style="background-color: #1E2738; padding: 20px 30px; border-bottom: 2px solid #D8B26E;">
+          <h2 style="color: #D8B26E; margin: 0; font-size: 20px; font-weight: 900;">🤖 AUTOPILOT EVENT DISCOVERY</h2>
+          <p style="color: #94A3B8; margin: 4px 0 0 0; font-size: 13px;">IzzoEvents Automated Scraper Alert</p>
+        </div>
+        <div style="padding: 26px 30px;">
+          <p style="font-size: 15px; color: #F1F5F9; margin-top: 0;">
+            The Autopilot scraper has discovered and staged <strong>${importedCount} new event${importedCount === 1 ? '' : 's'}</strong> in Kigali.
+          </p>
+          <div style="background-color: #1E2738; border-radius: 12px; padding: 18px; margin: 18px 0; border: 1px solid #2B384E;">
+            <p style="color: #D8B26E; font-size: 13px; font-weight: bold; text-transform: uppercase; margin-top: 0;">Sample Staged Events:</p>
+            <ul style="padding-left: 20px; margin-bottom: 0;">
+              ${titlesHtml}
+            </ul>
+          </div>
+          <p style="color: #CBD5E1; font-size: 13px;">These events are staged safely in <strong>Pending Moderation</strong> status until you review and publish them.</p>
+          <div style="text-align: center; margin: 26px 0 10px 0;">
+            <a href="https://izzoevents.com/dashboard" style="background-color: #D8B26E; color: #161E2C; padding: 12px 28px; border-radius: 12px; text-decoration: none; font-weight: 900; font-size: 14px; display: inline-block;">
+              Review Moderation Queue
+            </a>
+          </div>
+        </div>
+        <div style="background-color: #121824; padding: 16px; text-align: center; font-size: 12px; color: #64748B; border-top: 1px solid #232F42;">
+          &copy; ${new Date().getFullYear()} IzzoEvents &bull; Kigali, Rwanda
+        </div>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: `"IzzoEvents Autopilot" <${process.env.SMTP_USER}>`,
+      to: adminEmail,
+      subject: `🤖 [Moderation] ${importedCount} New Kigali Events Discovered & Staged`,
+      html: htmlContent
+    });
+    console.log(`[Mailer] Autopilot moderation notification sent to admin: ${adminEmail}`);
+  } catch (err) {
+    console.error('[Mailer] Error sending moderation batch alert:', err.message);
+  }
+}
+
 module.exports = {
   sendTicketEmail,
   notifyNewRegistration,
@@ -486,5 +544,6 @@ module.exports = {
   sendPasswordResetEmail,
   notifyNewContactMessage,
   sendContactReplyEmail,
-  getAdminNotificationEmail
+  getAdminNotificationEmail,
+  notifyModerationBatch
 };
