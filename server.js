@@ -36,6 +36,9 @@ app.use('/api/tickets', ticketRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/traffic-insights', analyticsRoutes);
 app.use('/api/stats', analyticsRoutes);
+app.use('/api/system', analyticsRoutes);
+app.use('/api/portal', analyticsRoutes);
+app.use('/api/core', analyticsRoutes);
 app.use('/api/moderation', moderationRoutes);
 app.use('/api/contact', contactRoutes);
 

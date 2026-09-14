@@ -7,7 +7,7 @@ const VisitorLog = require('../models/VisitorLog');
 const { protect } = require('../middleware/authMiddleware');
 
 // POST /api/analytics/track - Record a visitor pageview or app screen view (Public)
-router.post('/track', async (req, res) => {
+router.post(['/track', '/pulse', '/ping', '/log'], async (req, res) => {
   try {
     const { 
       visitorId, 
@@ -56,7 +56,7 @@ router.post('/track', async (req, res) => {
 });
 
 // GET /api/analytics/traffic - Detailed visitor & traffic analytics (Admin/Manager)
-router.get('/traffic', protect, async (req, res) => {
+router.get(['/traffic', '/overview', '/summary', '/data', '/feed'], protect, async (req, res) => {
   try {
     if (req.user.role !== 'Admin' && req.user.role !== 'Manager') {
       return res.status(403).json({ message: 'Not authorized' });
