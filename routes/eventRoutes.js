@@ -8,7 +8,7 @@ const router = express.Router();
 // GET all events
 router.get('/', async (req, res) => {
   try {
-    const { category, isFeatured, upcoming, limit, status } = req.query;
+    const { category, isFeatured, upcoming, limit, status, includePast } = req.query;
     let query = {};
     
     if (status) {
@@ -20,12 +20,42 @@ router.get('/', async (req, res) => {
 
     if (category) query.category = category;
     if (isFeatured === 'true') query.isFeatured = true;
-    if (upcoming === 'true') query.date = { $gte: new Date() };
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    // Active vs Past filtering
+    if (includePast === 'only') {
+      // Historical/past events only
+      query.$and = [
+        {
+          $or: [
+            { endDate: { $exists: false } },
+            { endDate: null },
+            { endDate: { $lt: todayStart } }
+          ]
+        },
+        { date: { $lt: todayStart } }
+      ];
+    } else if (includePast !== 'true' && status !== 'all') {
+      // Default for public discovery: only show active current or upcoming events
+      query.$or = [
+        { endDate: { $gte: todayStart } },
+        { endDate: { $exists: false }, date: { $gte: todayStart } },
+        { endDate: null, date: { $gte: todayStart } }
+      ];
+    }
 
     let dbQuery = Event.find(query).populate('manager', 'name');
     
-    if (upcoming === 'true') dbQuery = dbQuery.sort({ date: 1 });
-    else dbQuery = dbQuery.sort({ createdAt: -1 });
+    if (includePast === 'only') {
+      dbQuery = dbQuery.sort({ date: -1 });
+    } else if (includePast === 'true' || status === 'all') {
+      dbQuery = dbQuery.sort({ createdAt: -1 });
+    } else {
+      // Default: sort chronologically so today and this weekend appear first
+      dbQuery = dbQuery.sort({ date: 1 });
+    }
 
     if (limit) dbQuery = dbQuery.limit(parseInt(limit));
 
@@ -60,6 +90,11 @@ router.get('/share/:id', async (req, res) => {
     const safeImage = event.bannerImage || 'https://izzoevents.com/favicon.jpg';
     const safeVenue = (event.venue || 'Kigali, Rwanda').replace(/"/g, '&quot;');
     const isoDate = event.date ? new Date(event.date).toISOString() : new Date().toISOString();
+    const isoEndDate = event.endDate ? new Date(event.endDate).toISOString() : (event.date ? new Date(new Date(event.date).getTime() + 4 * 60 * 60 * 1000).toISOString() : isoDate);
+    const cleanOrg = (event.organizerName && !/unknown organizer|event host/i.test(event.organizerName)) 
+      ? event.organizerName 
+      : (event.venue && event.venue !== 'Kigali, Rwanda' ? event.venue.split(',')[0].trim() : 'IzzoEvents Experience Host');
+    const ticketPrice = event.isTicketed && event.ticketTiers && event.ticketTiers.length > 0 ? event.ticketTiers[0].price : (event.price || 0);
 
     const eventJsonLd = JSON.stringify({
       "@context": "https://schema.org",
@@ -68,12 +103,18 @@ router.get('/share/:id', async (req, res) => {
       "description": safeDesc,
       "image": [safeImage],
       "startDate": isoDate,
+      "endDate": isoEndDate,
+      "eventStatus": "https://schema.org/EventScheduled",
+      "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
       "location": {
         "@type": "Place",
-        "name": event.venue || "Kigali",
+        "name": safeVenue,
         "address": {
           "@type": "PostalAddress",
+          "streetAddress": safeVenue,
           "addressLocality": "Kigali",
+          "addressRegion": "Kigali City",
+          "postalCode": "00000",
           "addressCountry": "RW"
         },
         "geo": {
@@ -84,8 +125,20 @@ router.get('/share/:id', async (req, res) => {
       },
       "organizer": {
         "@type": "Organization",
-        "name": event.organizerName || "IzzoEvents",
+        "name": cleanOrg,
         "url": frontendBase
+      },
+      "performer": {
+        "@type": "PerformingGroup",
+        "name": cleanOrg
+      },
+      "offers": {
+        "@type": "Offer",
+        "url": eventUrl,
+        "price": ticketPrice,
+        "priceCurrency": "RWF",
+        "availability": "https://schema.org/InStock",
+        "validFrom": isoDate
       }
     });
 

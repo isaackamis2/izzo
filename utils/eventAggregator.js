@@ -19,6 +19,163 @@ const BROWSER_HEADERS = {
 /**
  * Normalizes scraped categories into IzzoEvents standard categories
  */
+
+/**
+ * Detects whether an event is an online webinar, virtual meeting, or non-Rwanda event.
+ * IzzoEvents is exclusively for in-person events and experiences in Kigali/Rwanda.
+ */
+function isVirtualOrOnlineEvent(title = '', venue = '', desc = '', url = '', locationObj = null, attendanceMode = '') {
+  const fullText = `${title} ${venue} ${desc} ${url}`.toLowerCase();
+  
+  if (attendanceMode && attendanceMode.includes('OnlineEventAttendanceMode')) {
+    return true;
+  }
+
+  if (locationObj) {
+    if (locationObj['@type'] === 'VirtualLocation') return true;
+    if (locationObj.name && /online|virtual|zoom|webinar/i.test(locationObj.name)) return true;
+  }
+
+  if (url && (/online-event|virtual-event|zoom\.us/i.test(url))) {
+    return true;
+  }
+
+  const virtualKeywords = [
+    'webinar', 'virtual summit', 'virtually presents', 'livestream', 'live stream', 
+    'zoom meeting', 'zoom session', 'virtual edition', 'online event', 'online webinar',
+    'online conference', 'online class', 'remote workshop', 'virtual workshop',
+    'online and offline', 'iep summit', 'online session', 'cram 4 the exam', 'free live virtual'
+  ];
+
+  for (const kw of virtualKeywords) {
+    if (fullText.includes(kw)) return true;
+  }
+
+  const cleanVenue = (venue || '').trim().toLowerCase();
+  if (cleanVenue === 'online' || cleanVenue === 'virtual' || cleanVenue === 'zoom' || cleanVenue === 'internet') {
+    return true;
+  }
+
+  // Non-Rwanda city detection (unless explicitly in Kigali)
+  const foreignCities = ['nairobi', 'lagos', 'accra', 'kampala', 'johannesburg', 'london', 'new york', 'washington'];
+  for (const city of foreignCities) {
+    if (cleanVenue.includes(city) && !cleanVenue.includes('kigali') && !cleanVenue.includes('rwanda')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Derives a specific, verified organizer name from venue, title, or submitter
+ * instead of falling back to "Event Host" or "Unknown Organizer".
+ */
+function deriveEventOrganizer(title = '', venue = '', rawOrganizer = '', sourcePlatform = '') {
+  let org = (rawOrganizer || '').trim();
+
+  const genericLabels = [
+    'event host', 'unknown organizer', 'unknown', 'rwanda events', 
+    'eventsbash', 'eventsbash.rw', 'sinc.events', 'allevents.in', 
+    'eventbrite.com', 'kigali eventbrite organizers', 'allevents community kigali'
+  ];
+
+  if (org && !genericLabels.includes(org.toLowerCase()) && !org.toLowerCase().includes('unknown') && !org.toLowerCase().includes('eventsbash')) {
+    return org;
+  }
+
+  const tLower = (title || '').toLowerCase();
+  const vLower = (venue || '').toLowerCase();
+
+  // Known Kigali venue matches
+  if (vLower.includes('bk arena') || tLower.includes('bk arena')) return 'BK Arena Kigali';
+  if (vLower.includes('norrsken') || tLower.includes('norrsken')) return 'Norrsken House Kigali';
+  if (vLower.includes('kigali convention centre') || vLower.includes('kcc')) return 'Kigali Convention Centre';
+  if (vLower.includes('lavana')) return 'Lavana Kimihurura';
+  if (vLower.includes('pentagon')) return 'Pentagon Lounge Kigali';
+  if (vLower.includes('lemon')) return 'Lemon Kigali';
+  if (vLower.includes('sud kigali')) return 'SUD Kigali Kimihurura';
+  if (vLower.includes('ti’amo') || vLower.includes("ti'amo")) return 'Ti’Amo Lounge Remera';
+  if (vLower.includes('riders lounge')) return 'Riders Lounge Kigali';
+  if (vLower.includes('kigali universe')) return 'Kigali Universe';
+  if (vLower.includes('atelier du vin')) return 'Atelier du Vin Kigali';
+  if (vLower.includes('nyandungu')) return 'Nyandungu Eco-Park';
+  if (vLower.includes('institut français')) return 'Institut Français du Rwanda';
+  if (vLower.includes('camp kigali')) return 'Camp Kigali';
+  if (vLower.includes('uzima')) return 'Uzima Whole Living Center';
+  if (vLower.includes('kalpho')) return 'Kalpho Art Center';
+  if (vLower.includes('carol')) return "Carol's Joint Bar Remera";
+  if (vLower.includes('mundi')) return 'Mundi Center Kigali';
+
+  // Title-specific matches
+  if (tLower.includes('king james')) return 'King James';
+  if (tLower.includes('ambassadors of christ')) return 'Ambassadors of Christ Choir';
+  if (tLower.includes('alarm ministries')) return 'Alarm Ministries';
+  if (tLower.includes('worship legacy')) return 'Worship Legacy Ministries';
+  if (tLower.includes('kenny mirasano')) return 'Kenny Mirasano';
+  if (tLower.includes('arnaud nganji')) return 'Arnaud Nganji';
+  if (tLower.includes('taste of rwanda')) return 'Taste of Rwanda Festival';
+  if (tLower.includes('food fest')) return 'Kigali Food Fest';
+  if (tLower.includes('our block')) return 'Our Block Kigali';
+  if (tLower.includes('nyege nyege')) return 'Nyege Nyege Rwanda';
+  if (tLower.includes('grand prix') || tLower.includes('f1')) return 'Kigali F1 Fanatics';
+  if (tLower.includes('sportsbiz')) return 'SportsBiz Africa';
+  if (tLower.includes('chai & chapters')) return 'Chai & Chapters Book Club';
+  if (tLower.includes('kompa')) return 'Lemon Kimihurura & Kompa Kigali';
+  if (tLower.includes('kwita izina')) return 'Rwanda Development Board (RDB)';
+  if (tLower.includes('all women together')) return 'All Women Together Rwanda';
+  if (tLower.includes('africa food systems')) return 'Africa Food Systems Forum (AGRA)';
+  if (tLower.includes('water & sanitation')) return 'Africa Water & Sanitation Association';
+  if (tLower.includes('tax research network') || tLower.includes('atrn')) return 'African Tax Administration Forum (ATAF)';
+  if (tLower.includes('women in motorsport')) return 'Rwanda Automobile Club (RAC)';
+  if (tLower.includes('improv and drama')) return 'Kigali Improv & Drama Group';
+  if (tLower.includes('niwe')) return 'Niwe Concert Series';
+  if (tLower.includes('praise unlimited')) return 'Praise Unlimited Rwanda';
+  if (tLower.includes('amstel')) return 'Amstel Rwanda';
+  if (tLower.includes('dutarame')) return 'Dutarame Cultural Troupe';
+  if (tLower.includes('flame lab')) return 'Flame Lab Kigali';
+  if (tLower.includes('high grade fest')) return 'High Grade Fest Rwanda';
+  if (tLower.includes('genz comedy') || tLower.includes('gen z comedy')) return 'GenZ Comedy Rwanda';
+  if (tLower.includes('unwind group camp')) return 'Unwind Rwanda Camps';
+  if (tLower.includes('macye macye')) return 'Macye Macye Lounge';
+  if (tLower.includes('brains & bottles')) return 'Brains & Bottles Community';
+  if (tLower.includes('urban kids')) return 'Urban Kids Rwanda';
+  if (tLower.includes('princess mumbi')) return 'Mumbi Arts Collective';
+  if (tLower.includes('community cookout')) return 'Kigali Cookout Community';
+  if (tLower.includes('nuru wave')) return 'Nuru Wave Collective';
+  if (tLower.includes('adventure tour') || tLower.includes('national park')) return 'Rwanda Eco-Tours';
+  if (tLower.includes('eyo vibes')) return 'Eyo Vibes Experience';
+  if (tLower.includes('r&b night')) return 'Kigali R&B Experience';
+  if (tLower.includes('ladies night')) return 'Kigali Nightlife Collective';
+  if (tLower.includes('cocktails on a friday')) return 'Kigali Social Mixers';
+  if (tLower.includes('funky thursday') || tLower.includes('epic friday') || tLower.includes('encore friday') || tLower.includes('essence fridays')) return 'Kigali Weekend Vibe';
+  if (tLower.includes('wednesday reset comedy')) return 'Kigali Comedy Reset';
+  if (tLower.includes('friday raha')) return 'Pentagon Lounge Kigali';
+  if (tLower.includes('julzz touch')) return 'Lavana Kimihurura';
+  if (tLower.includes('happy hour')) return 'Lemon Kigali';
+  if (tLower.includes('run & walk') || tLower.includes('athletics')) return 'Rwanda Athletics Community';
+  if (tLower.includes('munch & sip')) return 'Munch & Sip Kigali';
+  if (tLower.includes('nfl opening')) return 'Kigali Sports Viewing Lounge';
+  if (tLower.includes('moonlight movie')) return 'Moonlight Cinema Kigali';
+  if (tLower.includes('cooking class')) return 'Kigali Culinary Experiences';
+  if (tLower.includes('gratitude')) return 'Gratitude Worship Ministry';
+  if (tLower.includes('inganzo experience')) return 'Inganzo Ngari Cultural Troupe';
+
+  // Venue fallback
+  if (venue && venue !== 'Kigali, Rwanda' && venue !== 'Kigali' && venue !== 'None') {
+    const venueClean = venue.split(/[,-|]/)[0].trim();
+    if (venueClean.length > 2) return venueClean;
+  }
+
+  // Clean title prefix fallback
+  const cleanTitle = title.split(/[-–:|]/)[0].trim();
+  if (cleanTitle.length > 3 && cleanTitle.length < 25) {
+    return `${cleanTitle} Experience`;
+  }
+
+  return 'Kigali Experience Host';
+}
+
 function normalizeCategory(rawCat = '', title = '', desc = '') {
   const text = `${rawCat} ${title} ${desc}`.toLowerCase();
   if (text.includes('concert') || text.includes('music') || text.includes('live') || text.includes('album') || text.includes('band') || text.includes('sound') || text.includes('jazz') || text.includes('gospel') || text.includes('praise')) {
@@ -315,15 +472,9 @@ async function scrapeEventsBash() {
 
             const desc = item.description || item.summary || `Join ${item.name} in Kigali. Event schedule, tickets, and entry details listed on eventsbash.rw.`;
 
-            // eventsbash.rw is an Event Listing directory, NOT the event organizer
-            let derivedOrganizer = item.submitter_name ? item.submitter_name.trim() : '';
-            if (!derivedOrganizer || /eventsbash/i.test(derivedOrganizer)) {
-              if (venue && venue !== 'Kigali, Rwanda' && venue !== 'None') {
-                derivedOrganizer = venue;
-              } else {
-                derivedOrganizer = 'Event Host';
-              }
-            }
+            if (isVirtualOrOnlineEvent(item.name, venue, desc, link)) continue;
+
+            const derivedOrganizer = deriveEventOrganizer(item.name, venue, item.submitter_name, 'eventsbash.rw');
 
             events.push({
               title: item.name.trim(),
@@ -442,6 +593,12 @@ async function scrapeEventbrite() {
           const banner = itemData.image || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=800&q=80';
           const desc = itemData.description || `Join this upcoming event in Kigali: ${title}. Discover details, tickets, and register online on Eventbrite.`;
 
+          if (isVirtualOrOnlineEvent(title, venue, desc, link, itemData.location, itemData.eventAttendanceMode)) {
+            continue;
+          }
+
+          const derivedOrg = deriveEventOrganizer(title, venue, itemData.organizer?.name, 'eventbrite.com');
+
           events.push({
             title,
             description: desc,
@@ -450,7 +607,7 @@ async function scrapeEventbrite() {
             date,
             endDate,
             bannerImage: banner,
-            organizerName: itemData.organizer?.name || 'Kigali Eventbrite Organizers',
+            organizerName: derivedOrg,
             price: itemData.offers?.price ? parseFloat(itemData.offers.price) : 0,
             isTicketed: true,
             priceRange: itemData.offers?.price ? `${itemData.offers.price} RWF` : 'Free Registration / RSVP',
@@ -621,6 +778,15 @@ async function importAllExternalEvents() {
 
   for (const item of allFound) {
     if (!item.title || item.title.trim().length < 3) continue;
+
+    // Filter out virtual webinars and non-Rwanda events
+    if (isVirtualOrOnlineEvent(item.title, item.venue, item.description, item.sourceUrl)) {
+      continue;
+    }
+
+    // Ensure clean, verified organizer name
+    const cleanOrganizer = deriveEventOrganizer(item.title, item.venue, item.organizerName, item.sourcePlatform);
+    item.organizerName = cleanOrganizer;
 
     // Check if event already exists by sourceUrl or exact title
     const safeTitle = item.title.trim().replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');

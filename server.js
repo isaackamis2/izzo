@@ -49,15 +49,20 @@ app.use('/api/push', pushRoutes);
 app.get('/sitemap.xml', async (req, res) => {
   try {
     const Event = require('./models/Event');
-    const events = await Event.find({ status: { $nin: ['Pending_Moderation', 'Rejected'] } });
+    const events = await Event.find({ status: { $nin: ['Pending_Moderation', 'Rejected'] } }).sort({ date: 1 });
     const frontendBase = process.env.FRONTEND_URL || 'https://izzoevents.com';
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
 
     let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
     xml += `  <url>\n    <loc>${frontendBase}/</loc>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n`;
 
     for (const e of events) {
       const lastmod = (e.updatedAt || e.createdAt || new Date()).toISOString().split('T')[0];
-      xml += `  <url>\n    <loc>${frontendBase}/events/${e._id}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
+      const isUpcoming = (e.endDate && new Date(e.endDate) >= todayStart) || (!e.endDate && new Date(e.date) >= todayStart);
+      const priority = isUpcoming ? '0.9' : '0.5';
+      const changefreq = isUpcoming ? 'daily' : 'monthly';
+      xml += `  <url>\n    <loc>${frontendBase}/events/${e._id}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>${changefreq}</changefreq>\n    <priority>${priority}</priority>\n  </url>\n`;
     }
 
     xml += `</urlset>`;
