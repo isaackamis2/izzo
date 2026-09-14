@@ -182,12 +182,22 @@ router.get('/traffic', protect, async (req, res) => {
       .limit(25)
       .select('path pageTitle platform device browser os country city referrer createdAt');
 
+    // App Installations Metric
+    const totalInstalls = await VisitorLog.countDocuments({ path: '/app-installed' });
+    const androidInstalls = await VisitorLog.countDocuments({ path: '/app-installed', platform: 'android' });
+    const iosInstalls = await VisitorLog.countDocuments({ path: '/app-installed', platform: 'ios' });
+
     res.json({
       kpi: {
         today: { views: todayViews, uniqueVisitors: todayUniqueVisitors },
         week: { views: weekViews, uniqueVisitors: weekUniqueVisitors },
         month: { views: monthViews, uniqueVisitors: monthUniqueVisitors },
         allTime: { views: totalViews, uniqueVisitors: totalUniqueVisitors }
+      },
+      appInstalls: {
+        total: totalInstalls,
+        android: androidInstalls,
+        ios: iosInstalls
       },
       dailyTrends,
       platforms,
