@@ -8,8 +8,17 @@ const scheduleRecurringEvents = () => {
     try {
       const now = new Date();
       
+      // An event is only expired if its endDate has passed, or if date has passed when no endDate exists.
       const expiredRecurringEvents = await Event.find({
-        date: { $lt: now },
+        $or: [
+          { endDate: { $exists: true, $ne: null, $lt: now } },
+          {
+            $and: [
+              { $or: [{ endDate: { $exists: false } }, { endDate: null }] },
+              { date: { $lt: now } }
+            ]
+          }
+        ],
         recurringFrequency: { $in: ['daily', 'weekly', 'monthly', 'yearly'] }
       });
 
@@ -44,6 +53,18 @@ const scheduleRecurringEvents = () => {
                 if (newEndDate) newEndDate.setFullYear(newEndDate.getFullYear() + 1); 
                 break;
             }
+        }
+
+        // Check if an event instance with this title and date already exists
+        const existingInstance = await Event.findOne({
+          title: event.title,
+          date: newDate
+        });
+        if (existingInstance) {
+          console.log(`[Cron] Instance for "${event.title}" on ${newDate.toISOString()} already exists. Deactivating recurrence on old instance.`);
+          event.recurringFrequency = 'none';
+          await event.save();
+          continue;
         }
 
         // Clone the event

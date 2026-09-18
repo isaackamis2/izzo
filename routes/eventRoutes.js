@@ -21,28 +21,33 @@ router.get('/', async (req, res) => {
     if (category) query.category = category;
     if (isFeatured === 'true') query.isFeatured = true;
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
 
     // Active vs Past filtering
     if (includePast === 'only') {
       // Historical/past events only
-      query.$and = [
+      query.$or = [
+        { endDate: { $exists: true, $ne: null, $lt: now } },
         {
-          $or: [
-            { endDate: { $exists: false } },
-            { endDate: null },
-            { endDate: { $lt: todayStart } }
+          $and: [
+            { $or: [{ endDate: { $exists: false } }, { endDate: null }] },
+            { date: { $lt: todayStart } }
           ]
-        },
-        { date: { $lt: todayStart } }
+        }
       ];
     } else if (includePast !== 'true' && status !== 'all') {
-      // Default for public discovery: only show active current or upcoming events
+      // Default for public discovery: strictly active current or upcoming events
+      // Events with an endDate must still be ongoing or future (endDate >= now)
+      // Events without an endDate must be today or in the future (date >= todayStart)
       query.$or = [
-        { endDate: { $gte: todayStart } },
-        { endDate: { $exists: false }, date: { $gte: todayStart } },
-        { endDate: null, date: { $gte: todayStart } }
+        { endDate: { $exists: true, $ne: null, $gte: now } },
+        {
+          $and: [
+            { $or: [{ endDate: { $exists: false } }, { endDate: null }] },
+            { date: { $gte: todayStart } }
+          ]
+        }
       ];
     }
 

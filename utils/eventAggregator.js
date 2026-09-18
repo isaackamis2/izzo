@@ -176,6 +176,74 @@ function deriveEventOrganizer(title = '', venue = '', rawOrganizer = '', sourceP
   return 'Kigali Experience Host';
 }
 
+/**
+ * Standardizes price values and price ranges into professional Rwandan currency formats.
+ * e.g. "10000" -> { price: 10000, priceRange: "10,000 RWF" }
+ *      "5000-15000" -> { price: 5000, priceRange: "5,000 - 15,000 RWF" }
+ *      "Free RSVP" -> { price: 0, priceRange: "Free" }
+ */
+function normalizePriceString(price = 0, priceRange = '') {
+  let numPrice = typeof price === 'number' ? price : parseInt(price, 10) || 0;
+  let str = (priceRange || '').trim();
+
+  if (numPrice === 0 && (!str || /free|no cost|rsvp|registration/i.test(str))) {
+    return { price: 0, priceRange: 'Free' };
+  }
+
+  if (!str && numPrice > 0) {
+    return { price: numPrice, priceRange: `${numPrice.toLocaleString()} RWF` };
+  }
+
+  if (!str) {
+    return { price: 0, priceRange: 'Price TBA' };
+  }
+
+  if (/^(n\/a|tbc|tbd|none)$/i.test(str)) {
+    return { price: numPrice, priceRange: 'Price TBA' };
+  }
+
+  if (/free registration|free entry|no cost|free rsvp/i.test(str)) {
+    return { price: 0, priceRange: 'Free' };
+  }
+
+  if (/view on allevents|registration required|tickets on sinc/i.test(str)) {
+    return { price: numPrice, priceRange: 'Registration Required' };
+  }
+
+  // Replace shorthand 'K' e.g. 7K -> 7,000
+  str = str.replace(/(\d+)K\b/gi, '$1,000');
+
+  // Standardize RWF currency label
+  str = str.replace(/rwf|rw\b/gi, 'RWF');
+  str = str.replace(/\s+/g, ' ');
+
+  // Fix ranges like 15 000-25 000 or 5000-100,000RWF
+  str = str.replace(/(\d[\d\s,]*)\s*-\s*(\d[\d\s,]*)/g, (match, p1, p2) => {
+    const n1 = parseInt(p1.replace(/[\s,]/g, ''), 10);
+    const n2 = parseInt(p2.replace(/[\s,]/g, ''), 10);
+    if (!isNaN(n1) && !isNaN(n2)) {
+      if (numPrice === 0) numPrice = n1;
+      return `${n1.toLocaleString()} - ${n2.toLocaleString()}`;
+    }
+    return match;
+  });
+
+  // If str is just a raw number e.g. "10000"
+  if (/^\d+$/.test(str)) {
+    const num = parseInt(str, 10);
+    return { price: num, priceRange: `${num.toLocaleString()} RWF` };
+  }
+
+  // Ensure RWF is appended if it's numeric range and doesn't have RWF or USD
+  if (!/RWF|USD|\$|EUR/i.test(str) && /\d/.test(str)) {
+    str += ' RWF';
+  }
+
+  str = str.replace(/\s*RWF\b/i, ' RWF').trim();
+
+  return { price: numPrice, priceRange: str };
+}
+
 function normalizeCategory(rawCat = '', title = '', desc = '') {
   const text = `${rawCat} ${title} ${desc}`.toLowerCase();
   if (text.includes('concert') || text.includes('music') || text.includes('live') || text.includes('album') || text.includes('band') || text.includes('sound') || text.includes('jazz') || text.includes('gospel') || text.includes('praise')) {
@@ -475,6 +543,7 @@ async function scrapeEventsBash() {
             if (isVirtualOrOnlineEvent(item.name, venue, desc, link)) continue;
 
             const derivedOrganizer = deriveEventOrganizer(item.name, venue, item.submitter_name, 'eventsbash.rw');
+            const { price: normPrice, priceRange: normPriceRange } = normalizePriceString(price, item.entrance_cost);
 
             events.push({
               title: item.name.trim(),
@@ -485,9 +554,9 @@ async function scrapeEventsBash() {
               endDate,
               bannerImage: banner,
               organizerName: derivedOrganizer,
-              price,
+              price: normPrice,
               isTicketed: true,
-              priceRange: item.entrance_cost || (price > 0 ? `${price.toLocaleString()} RWF` : 'Free Entry'),
+              priceRange: normPriceRange,
               externalTicketLink: link,
               sourcePlatform: 'eventsbash.rw',
               sourceUrl: link
@@ -598,6 +667,9 @@ async function scrapeEventbrite() {
           }
 
           const derivedOrg = deriveEventOrganizer(title, venue, itemData.organizer?.name, 'eventbrite.com');
+          const rawPrice = itemData.offers?.price ? parseFloat(itemData.offers.price) : 0;
+          const rawPriceRange = itemData.offers?.price ? `${itemData.offers.price} RWF` : 'Free Registration / RSVP';
+          const { price: normPrice, priceRange: normPriceRange } = normalizePriceString(rawPrice, rawPriceRange);
 
           events.push({
             title,
@@ -608,9 +680,9 @@ async function scrapeEventbrite() {
             endDate,
             bannerImage: banner,
             organizerName: derivedOrg,
-            price: itemData.offers?.price ? parseFloat(itemData.offers.price) : 0,
+            price: normPrice,
             isTicketed: true,
-            priceRange: itemData.offers?.price ? `${itemData.offers.price} RWF` : 'Free Registration / RSVP',
+            priceRange: normPriceRange,
             externalTicketLink: link,
             sourcePlatform: 'eventbrite.com',
             sourceUrl: link
@@ -706,6 +778,9 @@ async function scrapeAllEvents() {
 
       const desc = `Upcoming Kigali event: ${rawTitle}. Check out details, schedule, and tickets on AllEvents.`;
 
+      const derivedOrg = deriveEventOrganizer(rawTitle, venue, 'AllEvents Community Kigali', 'allevents.in');
+      const { price: normPrice, priceRange: normPriceRange } = normalizePriceString(0, 'Registration Required');
+
       events.push({
         title: rawTitle,
         description: desc,
@@ -713,10 +788,10 @@ async function scrapeAllEvents() {
         category: normalizeCategory('', rawTitle, desc),
         date,
         bannerImage: banner,
-        organizerName: 'AllEvents Community Kigali',
-        price: 0,
+        organizerName: derivedOrg,
+        price: normPrice,
         isTicketed: true,
-        priceRange: 'View on AllEvents',
+        priceRange: normPriceRange,
         externalTicketLink: link,
         sourcePlatform: 'allevents.in',
         sourceUrl: link
@@ -802,17 +877,36 @@ async function importAllExternalEvents() {
       continue;
     }
 
+    // Also check if same venue on the exact same date (+/- 6 hours)
+    if (item.date && item.venue && item.venue !== 'Kigali, Rwanda' && item.venue !== 'Kigali') {
+      const windowStart = new Date(new Date(item.date).getTime() - 6 * 60 * 60 * 1000);
+      const windowEnd = new Date(new Date(item.date).getTime() + 6 * 60 * 60 * 1000);
+      const venuePrefix = item.venue.split(/[,-|]/)[0].trim().replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+      if (venuePrefix.length > 3) {
+        const venueMatch = await Event.findOne({
+          venue: new RegExp(venuePrefix, 'i'),
+          date: { $gte: windowStart, $lte: windowEnd }
+        });
+        if (venueMatch) {
+          skippedCount++;
+          continue;
+        }
+      }
+    }
+
+    const { price: cleanPrice, priceRange: cleanRange } = normalizePriceString(item.price, item.priceRange);
+
     // Insert as Pending Moderation
     const newEvent = new Event({
       title: item.title.trim(),
       description: item.description || `Exciting upcoming event in Kigali: ${item.title}.`,
       category: item.category || 'Conferences & Summits',
       venue: item.venue || 'Kigali, Rwanda',
-      organizerName: item.organizerName || 'Rwanda Events',
+      organizerName: item.organizerName || 'Kigali Experience Host',
       date: item.date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       endDate: item.endDate,
-      price: item.price || 0,
-      priceRange: item.priceRange || 'Tickets Available',
+      price: cleanPrice,
+      priceRange: cleanRange,
       bannerImage: item.bannerImage || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=800&q=80',
       manager: managerId,
       isFeatured: false,

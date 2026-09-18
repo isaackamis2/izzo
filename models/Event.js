@@ -8,7 +8,7 @@ const eventSchema = new mongoose.Schema({
     required: true
   },
   venue: { type: String, required: true },
-  organizerName: { type: String, required: true, default: 'Unknown Organizer' },
+  organizerName: { type: String, required: true, default: 'IzzoEvents Host' },
   date: { type: Date, required: true },
   endDate: { type: Date },
   recurringFrequency: { type: String, enum: ['none', 'daily', 'weekly', 'monthly', 'yearly'], default: 'none' },
