@@ -1,3 +1,12 @@
+/**
+ * ======================================================
+ * PLATFORM DEVELOPED BY: Isiaka Kamana (Isaac)
+ * Role: Lead Web Developer & Database Architect
+ * Website: https://x.com/isaackamis2
+ * Contact: isaackamis@gmail.com
+ * ======================================================
+ */
+
 const mongoose = require('mongoose');
 
 const eventSchema = new mongoose.Schema({
@@ -38,7 +47,8 @@ const eventSchema = new mongoose.Schema({
   importedAt: { type: Date },
   isSponsored: { type: Boolean, default: false },
   sponsoredUntil: { type: Date },
-  sponsorshipTier: { type: String, default: 'Standard' }
+  sponsorshipTier: { type: String, default: 'Standard' },
+  isPrivate: { type: Boolean, default: false }
 }, {  
   timestamps: true,
   optimisticConcurrency: true

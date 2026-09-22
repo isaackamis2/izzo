@@ -1,3 +1,12 @@
+/**
+ * ======================================================
+ * PLATFORM DEVELOPED BY: Isiaka Kamana (Isaac)
+ * Role: Lead Web Developer & Database Architect
+ * Website: https://x.com/isaackamis2
+ * Contact: isaackamis@gmail.com
+ * ======================================================
+ */
+
 const express = require('express');
 const Event = require('../models/Event');
 const User = require('../models/User');
@@ -21,7 +30,7 @@ function getKigaliTodayStart() {
 // GET all events
 router.get('/', async (req, res) => {
   try {
-    const { category, isFeatured, upcoming, limit, status, includePast } = req.query;
+    const { category, isFeatured, upcoming, limit, status, includePast, includePrivate } = req.query;
     let query = {};
     
     if (status) {
@@ -29,6 +38,11 @@ router.get('/', async (req, res) => {
     } else {
       // By default, public API only returns published events
       query.status = { $nin: ['Pending_Moderation', 'Rejected'] };
+    }
+
+    // Exclude private/unlisted testing events from public discovery
+    if (includePrivate !== 'true' && status !== 'all') {
+      query.isPrivate = { $ne: true };
     }
 
     if (category) query.category = category;
@@ -216,7 +230,7 @@ router.get('/share/:id', async (req, res) => {
 // POST new event
 router.post('/', async (req, res) => {
   try {
-    const { title, description, category, venue, organizerName, date, endDate, recurringFrequency, price, maxCapacity, manager, bannerImage, isFeatured, isTicketed, ticketTiers, priceRange, externalTicketLink } = req.body;
+    const { title, description, category, venue, organizerName, date, endDate, recurringFrequency, price, maxCapacity, manager, bannerImage, isFeatured, isTicketed, ticketTiers, priceRange, externalTicketLink, isPrivate } = req.body;
     
     // Admin check for isFeatured
     let finalIsFeatured = false;
@@ -231,13 +245,16 @@ router.post('/', async (req, res) => {
       bannerImage: bannerImage || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=800&q=80',
       isFeatured: finalIsFeatured,
       isTicketed,
-      ticketTiers, priceRange, externalTicketLink
+      ticketTiers, priceRange, externalTicketLink,
+      isPrivate: !!isPrivate
     });
     await newEvent.save();
     
-    // Asynchronously cross-post to Twitter and Instagram
-    postEventToTwitter(newEvent).catch(err => console.error('[Twitter AutoPost Error]:', err));
-    postEventToInstagram(newEvent).catch(err => console.error('[Instagram AutoPost Error]:', err));
+    // Asynchronously cross-post to Twitter and Instagram only if NOT private
+    if (!isPrivate) {
+      postEventToTwitter(newEvent).catch(err => console.error('[Twitter AutoPost Error]:', err));
+      postEventToInstagram(newEvent).catch(err => console.error('[Instagram AutoPost Error]:', err));
+    }
     
     res.status(201).json(newEvent);
   } catch (error) {
@@ -248,7 +265,7 @@ router.post('/', async (req, res) => {
 // PUT update event
 router.put('/:id', async (req, res) => {
   try {
-    const { title, description, category, venue, organizerName, date, endDate, recurringFrequency, price, maxCapacity, bannerImage, isFeatured, manager, isTicketed, ticketTiers, priceRange, externalTicketLink } = req.body;
+    const { title, description, category, venue, organizerName, date, endDate, recurringFrequency, price, maxCapacity, bannerImage, isFeatured, manager, isTicketed, ticketTiers, priceRange, externalTicketLink, isPrivate } = req.body;
     
     // Admin check for isFeatured
     let finalIsFeatured = false;
@@ -257,9 +274,12 @@ router.put('/:id', async (req, res) => {
       if (user && user.role === 'Admin') finalIsFeatured = true;
     }
 
+    const updateFields = { title, description, category, venue, organizerName, date, endDate, recurringFrequency, price, maxCapacity, bannerImage, isFeatured: finalIsFeatured, isTicketed, ticketTiers, priceRange, externalTicketLink };
+    if (isPrivate !== undefined) updateFields.isPrivate = !!isPrivate;
+
     const updated = await Event.findByIdAndUpdate(
       req.params.id,
-      { title, description, category, venue, organizerName, date, endDate, recurringFrequency, price, maxCapacity, bannerImage, isFeatured: finalIsFeatured, isTicketed, ticketTiers, priceRange, externalTicketLink },
+      updateFields,
       { new: true, runValidators: true }
     );
     if (!updated) return res.status(404).json({ message: 'Event not found' });

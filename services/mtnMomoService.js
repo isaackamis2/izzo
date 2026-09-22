@@ -111,7 +111,7 @@ async function requestToPay({ referenceId, amount, phoneNumber, externalId, paye
 
   const payload = {
     amount: String(amount),
-    currency: 'RWF',
+    currency: config.environment === 'sandbox' ? 'EUR' : 'RWF',
     externalId: externalId || `IZZO-${Date.now()}`,
     payer: {
       partyIdType: 'MSISDN',
