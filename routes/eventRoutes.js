@@ -5,6 +5,19 @@ const { postEventToTwitter } = require('../utils/twitter');
 const { postEventToInstagram } = require('../utils/instagram');
 const router = express.Router();
 
+/**
+ * Returns midnight today in Africa/Kigali (+02:00, Central Africa Time)
+ */
+function getKigaliTodayStart() {
+  const kigaliDateStr = new Intl.DateTimeFormat('en-CA', { 
+    timeZone: 'Africa/Kigali', 
+    year: 'numeric', 
+    month: '2-digit', 
+    day: '2-digit' 
+  }).format(new Date());
+  return new Date(`${kigaliDateStr}T00:00:00+02:00`);
+}
+
 // GET all events
 router.get('/', async (req, res) => {
   try {
@@ -22,7 +35,7 @@ router.get('/', async (req, res) => {
     if (isFeatured === 'true') query.isFeatured = true;
 
     const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const todayStart = getKigaliTodayStart();
 
     // Active vs Past filtering
     if (includePast === 'only') {

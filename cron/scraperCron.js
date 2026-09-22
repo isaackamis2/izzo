@@ -17,8 +17,10 @@ const scheduleScraperCron = () => {
     } catch (err) {
       console.error('[Autopilot Scraper Error]:', err.message);
     }
+  }, {
+    timezone: 'Africa/Kigali'
   });
-  console.log('[Cron] Autopilot Kigali event scraper scheduled (runs every 6 hours).');
+  console.log('[Cron] Autopilot Kigali event scraper scheduled (Africa/Kigali, UTC+2).');
 };
 
 module.exports = scheduleScraperCron;

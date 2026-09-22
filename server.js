@@ -1,3 +1,15 @@
+/**
+ * ======================================================
+ * PLATFORM DEVELOPED BY: Isiaka Kamana (Isaac)
+ * Role: Lead Web Developer & Database Architect
+ * Website: https://x.com/isaackamis2
+ * Contact: isaackamis@gmail.com
+ * ======================================================
+ */
+
+// Force official Rwanda / Kigali timezone (Central Africa Time, UTC+2)
+process.env.TZ = process.env.TZ || 'Africa/Kigali';
+
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -25,6 +37,7 @@ const analyticsRoutes = require('./routes/analyticsRoutes');
 const moderationRoutes = require('./routes/moderationRoutes');
 const contactRoutes = require('./routes/contactRoutes');
 const pushRoutes = require('./routes/pushRoutes');
+const gatewayRoutes = require('./routes/gatewayRoutes');
 const scheduleScraperCron = require('./cron/scraperCron');
 const scheduleRecurringEvents = require('./cron/recurringEvents');
 
@@ -35,6 +48,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/tickets', ticketRoutes);
+app.use('/api/gateway', gatewayRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/traffic-insights', analyticsRoutes);
 app.use('/api/stats', analyticsRoutes);
@@ -51,8 +65,8 @@ app.get('/sitemap.xml', async (req, res) => {
     const Event = require('./models/Event');
     const events = await Event.find({ status: { $nin: ['Pending_Moderation', 'Rejected'] } }).sort({ date: 1 });
     const frontendBase = process.env.FRONTEND_URL || 'https://izzoevents.com';
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const kigaliDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Kigali', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const todayStart = new Date(`${kigaliDateStr}T00:00:00+02:00`);
 
     let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
     xml += `  <url>\n    <loc>${frontendBase}/</loc>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n`;

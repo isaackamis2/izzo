@@ -11,7 +11,20 @@ const settingsSchema = new mongoose.Schema({
   twitterAutoPostEnabled: { type: Boolean, default: false },
   instagramAccountId: { type: String, default: '' },
   instagramAccessToken: { type: String, default: '' },
-  instagramAutoPostEnabled: { type: Boolean, default: false }
+  instagramAutoPostEnabled: { type: Boolean, default: false },
+
+  // ─── IzzoPay In-House Gateway Settings ───────────────────
+  paymentSimulationMode: { type: Boolean, default: false }, // true for demo/sandbox fallback
+  momoEnabled: { type: Boolean, default: true },
+  momoEnvironment: { type: String, enum: ['sandbox', 'mtnrwanda'], default: 'sandbox' },
+  momoSubscriptionKey: { type: String, default: '' },
+  momoApiUser: { type: String, default: '' },
+  momoApiKey: { type: String, default: '' },
+  
+  airtelEnabled: { type: Boolean, default: true },
+  airtelEnvironment: { type: String, enum: ['sandbox', 'production'], default: 'sandbox' },
+  airtelClientId: { type: String, default: '' },
+  airtelClientSecret: { type: String, default: '' }
 });
 
 module.exports = mongoose.model('Settings', settingsSchema);

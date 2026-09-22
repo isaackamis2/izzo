@@ -99,6 +99,8 @@ const scheduleRecurringEvents = () => {
     } catch (error) {
       console.error('[Cron Error] Failed to process recurring events:', error);
     }
+  }, {
+    timezone: 'Africa/Kigali'
   });
 };
 
