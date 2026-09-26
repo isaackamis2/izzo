@@ -177,6 +177,107 @@ function deriveEventOrganizer(title = '', venue = '', rawOrganizer = '', sourceP
 }
 
 /**
+ * Intelligently resolves specific Kigali venues and neighborhoods from text,
+ * eliminating the generic "Kigali, Rwanda" placeholder across all auto-pilot scrapers.
+ */
+function resolveKigaliVenue(title = '', desc = '', rawVenue = '', sourceUrl = '', category = '') {
+  let v = (rawVenue || '').trim();
+
+  // If rawVenue is already a good specific venue (not generic Kigali/Rwanda/None)
+  const isGeneric = !v || /^(kigali,?\s*rwanda|kigali|rwanda|none|tbd|tba|n\/a|location)$/i.test(v);
+  if (!isGeneric && v.length > 3 && !/kigali,?\s*rwanda$/i.test(v)) {
+    return v;
+  }
+
+  const combined = `${title} ${desc} ${v} ${sourceUrl}`.toLowerCase();
+
+  // 1. Specific Venues, Arenas, Convention Centers & Hubs
+  if (combined.includes('bk arena') || combined.includes('kigali arena')) return 'BK Arena, Remera';
+  if (combined.includes('convention centre') || combined.includes('convention center') || combined.includes('kcc') || combined.includes('radisson blu')) return 'Kigali Convention Centre (KCC), Kimihurura';
+  if (combined.includes('intare') || combined.includes('intare arena')) return 'Intare Conference Arena, Rusororo';
+  if (combined.includes('amahoro') || combined.includes('petit stade')) return 'Amahoro National Stadium, Remera';
+  if (combined.includes('pelé stadium') || combined.includes('pele stadium') || combined.includes('nyamirambo stadium')) return 'Kigali Pelé Stadium, Nyamirambo';
+  if (combined.includes('camp kigali')) return 'Camp Kigali, Kiyovu';
+  if (combined.includes('expo ground') || combined.includes('gikondo expo')) return 'Kigali Expo Grounds, Gikondo';
+  if (combined.includes('norrsken') || combined.includes('norrsken house')) return 'Norrsken House Kigali, KN 78 St';
+  if (combined.includes('westerwelle') || combined.includes('startup haus')) return 'Westerwelle Startup Haus, Kacyiru';
+  if (combined.includes('impact hub')) return 'Impact Hub Kigali, Kiyovu';
+  if (combined.includes('lavana')) return 'Lavana, Kimihurura';
+  if (combined.includes('lemon kigali') || combined.includes('lemon')) return 'Lemon Kigali, Kimihurura';
+  if (combined.includes('fika cafe') || combined.includes('fika')) return 'Fika Cafe, Kigali';
+  if (combined.includes('billiards club') || combined.includes('billiards') || combined.includes('afro-pulse')) return 'Billiards Club, Kigali';
+  if (combined.includes('sud kigali') || combined.includes('sud lounge')) return 'SUD Kigali, Kimihurura';
+  if (combined.includes('pentagon lounge') || combined.includes('pentagon')) return 'Pentagon Lounge, Kigali';
+  if (combined.includes('ti’amo') || combined.includes("ti'amo") || combined.includes('tiamo')) return 'Ti’Amo Lounge, Remera';
+  if (combined.includes('riders lounge') || combined.includes('kigali heights')) return 'Riders Lounge, Kigali Heights';
+  if (combined.includes('inzora rooftop') || combined.includes('inzora')) return 'Inzora Rooftop, Kacyiru';
+  if (combined.includes('mamba club') || combined.includes('mamba')) return 'Mamba Club, Kimihurura';
+  if (combined.includes("choma'd") || combined.includes('chomad') || combined.includes('choma’d')) return "Choma'd Bar & Grill, Kimihurura";
+  if (combined.includes("l'espace") || combined.includes('lespace')) return "L'Espace Cultural Space, Kacyiru";
+  if (combined.includes('institut français') || combined.includes('institut francais') || combined.includes('ifr')) return 'Institut Français du Rwanda, Kimihurura';
+  if (combined.includes('goethe')) return 'Goethe-Institut Kigali, Kiyovu';
+  if (combined.includes('inema') || combined.includes('inema arts')) return 'Inema Arts Center, Kacyiru';
+  if (combined.includes('kigali universe')) return 'Kigali Universe, Kigali';
+  if (combined.includes('atelier du vin')) return 'Atelier du Vin, Kimihurura';
+  if (combined.includes('nyandungu') || combined.includes('eco-park')) return 'Nyandungu Eco-Park, Ndera';
+  if (combined.includes('pili pili') || combined.includes('pilipili')) return 'Pili Pili, Kibagabaga';
+  if (combined.includes('mundi center') || combined.includes('mundi')) return 'Mundi Center, Kimihurura';
+  if (combined.includes('uzima')) return 'Uzima Whole Living Center, Kacyiru';
+  if (combined.includes('kalpho')) return 'Kalpho Art Center, Gisozi';
+  if (combined.includes('canal olympia') || combined.includes('canalolympia')) return 'CanalOlympia, Rebero';
+  if (combined.includes('century cinema') || combined.includes('utc cinema')) return 'Century Cinema UTC, Downtown Kigali';
+  if (combined.includes('serena') || combined.includes('kigali serena')) return 'Kigali Serena Hotel, Kiyovu';
+  if (combined.includes('marriott') || combined.includes('kigali marriott')) return 'Kigali Marriott Hotel, Kiyovu';
+  if (combined.includes('four points') || combined.includes('sheraton')) return 'Four Points by Sheraton, Kigali';
+  if (combined.includes('mille collines')) return 'Hôtel des Mille Collines, Kiyovu';
+  if (combined.includes('onomo')) return 'Onomo Hotel, Nyarugenge';
+  if (combined.includes('park inn')) return 'Park Inn by Radisson, Kiyovu';
+  if (combined.includes('the retreat') || combined.includes('heaven restaurant')) return 'The Retreat by Heaven, Kiyovu';
+  if (combined.includes('2000 hotel')) return '2000 Hotel, Downtown Kigali';
+  if (combined.includes('ubumwe')) return 'Ubumwe Grande Hotel, City Center';
+  if (combined.includes('golf club') || combined.includes('golf resort')) return 'Kigali Golf Resort & Villas, Nyarutarama';
+  if (combined.includes('cercle sportif')) return 'Cercle Sportif de Kigali, Rugunga';
+  if (combined.includes('rosty')) return 'Rosty Club, Kimironko';
+  if (combined.includes('cocobean')) return 'Cocobean, Kimihurura';
+  if (combined.includes('fuchsia')) return 'Fuchsia Lounge, Remera';
+  if (combined.includes('carol')) return "Carol's Joint Bar, Remera";
+  if (combined.includes('green hills')) return 'Green Hills Academy, Nyarutarama';
+  if (combined.includes('fazenda') || combined.includes('mount kigali')) return 'Fazenda Sengha, Mount Kigali';
+  if (combined.includes('healthtech summit') || combined.includes('healthtech')) return 'Kigali Convention Centre (KCC), Kimihurura';
+  if (combined.includes('orchestre impala') || combined.includes('impala')) return 'Impala Lounge & Cultural Space, Kigali';
+
+  // 2. Specific Neighborhoods / Sectors of Kigali
+  if (combined.includes('kimihurura')) return 'Kimihurura, Kigali';
+  if (combined.includes('kiyovu')) return 'Kiyovu, Kigali';
+  if (combined.includes('kacyiru')) return 'Kacyiru, Kigali';
+  if (combined.includes('remera')) return 'Remera, Kigali';
+  if (combined.includes('nyamirambo')) return 'Nyamirambo, Kigali';
+  if (combined.includes('kibagabaga')) return 'Kibagabaga, Kigali';
+  if (combined.includes('nyarutarama')) return 'Nyarutarama, Kigali';
+  if (combined.includes('gishushu')) return 'Gishushu, Kigali';
+  if (combined.includes('gikondo')) return 'Gikondo, Kigali';
+  if (combined.includes('gisozi')) return 'Gisozi, Kigali';
+  if (combined.includes('kicukiro')) return 'Kicukiro, Kigali';
+  if (combined.includes('rebero')) return 'Rebero, Kigali';
+  if (combined.includes('masaka')) return 'Masaka, Kigali';
+  if (combined.includes('kanombe')) return 'Kanombe, Kigali';
+  if (combined.includes('kimironko')) return 'Kimironko, Kigali';
+  if (combined.includes('rusororo')) return 'Rusororo, Kigali';
+  if (combined.includes('bumbogo')) return 'Kigali Innovation City, Bumbogo';
+
+  // 3. Category Contextual Default Hubs
+  const cat = (category || '').toLowerCase();
+  if (cat.includes('nightlife') || cat.includes('party')) return 'Kimihurura / Nightlife Hub, Kigali';
+  if (cat.includes('conference') || cat.includes('summit')) return 'Kigali Convention District, Kigali';
+  if (cat.includes('art') || cat.includes('fashion')) return 'Kigali Cultural Arts District, Kigali';
+  if (cat.includes('sport') || cat.includes('fitness')) return 'BK Arena & Sports Zone, Remera';
+  if (cat.includes('food') || cat.includes('dining')) return 'Kigali Culinary Lounge, Kigali';
+
+  // Final clean fallback
+  return v && v !== 'None' ? `${v}, Kigali` : 'Kigali Cultural Hub, Kigali';
+}
+
+/**
  * Standardizes price values and price ranges into professional Rwandan currency formats.
  * e.g. "10000" -> { price: 10000, priceRange: "10,000 RWF" }
  *      "5000-15000" -> { price: 5000, priceRange: "5,000 - 15,000 RWF" }
@@ -527,7 +628,8 @@ async function scrapeEventsBash() {
 
             const banner = item.image || 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=800&q=80';
             const link = item.event_url || (item.slug ? `https://eventsbash.rw/events/${item.slug}` : `https://eventsbash.rw/#event-${item.id}`);
-            const venue = item.venue && item.venue !== 'None' ? item.venue : 'Kigali, Rwanda';
+            const desc = item.description || item.summary || `Join ${item.name} in Kigali. Event schedule, tickets, and entry details listed on eventsbash.rw.`;
+            const venue = resolveKigaliVenue(item.name, desc, item.venue, link, normalizeCategory('', item.name, desc));
 
             // Parse entry price
             let price = 0;
@@ -537,8 +639,6 @@ async function scrapeEventsBash() {
                 price = parseInt(priceMatch[1].replace(/,/g, ''), 10) || 0;
               }
             }
-
-            const desc = item.description || item.summary || `Join ${item.name} in Kigali. Event schedule, tickets, and entry details listed on eventsbash.rw.`;
 
             if (isVirtualOrOnlineEvent(item.name, venue, desc, link)) continue;
 
@@ -658,6 +758,7 @@ async function scrapeEventbrite() {
             else if (locName) venue = `${locName}, Kigali`;
             else if (street) venue = `${street}, Kigali`;
           }
+          venue = resolveKigaliVenue(title, itemData.description || '', venue, link, normalizeCategory('', title, itemData.description || ''));
 
           const banner = itemData.image || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=800&q=80';
           const desc = itemData.description || `Join this upcoming event in Kigali: ${title}. Discover details, tickets, and register online on Eventbrite.`;
@@ -774,7 +875,8 @@ async function scrapeAllEvents() {
 
       // Extract venue
       const subtitleMatch = /<div class="subtitle"[^>]*>([\s\S]*?)<\/div>/i.exec(body);
-      const venue = subtitleMatch ? subtitleMatch[1].replace(/<[^>]*>/g, '').trim() : 'Kigali, Rwanda';
+      const rawVenue = subtitleMatch ? subtitleMatch[1].replace(/<[^>]*>/g, '').trim() : 'Kigali, Rwanda';
+      const venue = resolveKigaliVenue(rawTitle, desc, rawVenue, link, normalizeCategory('', rawTitle, desc));
 
       const desc = `Upcoming Kigali event: ${rawTitle}. Check out details, schedule, and tickets on AllEvents.`;
 
@@ -901,7 +1003,7 @@ async function importAllExternalEvents() {
       title: item.title.trim(),
       description: item.description || `Exciting upcoming event in Kigali: ${item.title}.`,
       category: item.category || 'Conferences & Summits',
-      venue: item.venue || 'Kigali, Rwanda',
+      venue: resolveKigaliVenue(item.title, item.description, item.venue, item.sourceUrl, item.category),
       organizerName: item.organizerName || 'Kigali Experience Host',
       date: item.date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       endDate: item.endDate,
@@ -940,6 +1042,7 @@ async function importAllExternalEvents() {
 }
 
 module.exports = {
+  resolveKigaliVenue,
   scrapeBkArena,
   scrapeSincEvents,
   scrapeEventsBash,

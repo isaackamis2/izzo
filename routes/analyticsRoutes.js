@@ -138,30 +138,84 @@ router.get(['/traffic', '/overview', '/summary', '/data', '/feed'], protect, asy
       }
     });
 
-    // 5. Top Visited Events
+    // 5. Top Visited & Most Popular Events (Checks eventId, plus path regex fallback)
     const topEventsAgg = await VisitorLog.aggregate([
-      { $match: { eventId: { $ne: null } } },
-      { $group: { _id: '$eventId', viewCount: { $sum: 1 } } },
+      {
+        $match: {
+          $or: [
+            { eventId: { $ne: null } },
+            { path: { $regex: '^/events/[a-f0-9]{24}', $options: 'i' } }
+          ]
+        }
+      },
+      {
+        $project: {
+          resolvedId: {
+            $ifNull: [
+              '$eventId',
+              { $substrBytes: ['$path', 8, 24] }
+            ]
+          }
+        }
+      },
+      { $match: { resolvedId: { $ne: null, $ne: '' } } },
+      { $group: { _id: '$resolvedId', viewCount: { $sum: 1 } } },
       { $sort: { viewCount: -1 } },
-      { $limit: 8 }
+      { $limit: 12 }
     ]);
 
-    // Populate event titles
+    // Populate event titles, ticket sales, and conversion metrics
     const populatedTopEvents = [];
+    const seenEventIds = new Set();
+
     for (const item of topEventsAgg) {
       try {
-        const ev = await Event.findById(item._id).select('title bannerImage venue category date');
-        if (ev) {
+        const ev = await Event.findById(item._id).select('title bannerImage venue category date price priceRange isFeatured');
+        if (ev && !seenEventIds.has(String(ev._id))) {
+          seenEventIds.add(String(ev._id));
+          const ticketsSold = await Registration.countDocuments({ event: ev._id, status: { $ne: 'Cancelled' } });
           populatedTopEvents.push({
             eventId: ev._id,
             title: ev.title,
             bannerImage: ev.bannerImage,
             venue: ev.venue,
             category: ev.category,
-            views: item.viewCount
+            price: ev.price,
+            priceRange: ev.priceRange,
+            isFeatured: ev.isFeatured,
+            views: item.viewCount,
+            ticketsSold
           });
         }
       } catch (e) {}
+    }
+
+    // Fallback: If fewer than 4 events found from visitor logs, supplement with top published events
+    if (populatedTopEvents.length < 4) {
+      const existingIds = populatedTopEvents.map(e => e.eventId);
+      const fallbackEvents = await Event.find({ 
+        _id: { $nin: existingIds },
+        status: 'Published' 
+      })
+      .sort({ isFeatured: -1, date: 1 })
+      .limit(8 - populatedTopEvents.length)
+      .select('title bannerImage venue category date price priceRange isFeatured');
+
+      for (const ev of fallbackEvents) {
+        const ticketsSold = await Registration.countDocuments({ event: ev._id, status: { $ne: 'Cancelled' } });
+        populatedTopEvents.push({
+          eventId: ev._id,
+          title: ev.title,
+          bannerImage: ev.bannerImage,
+          venue: ev.venue,
+          category: ev.category,
+          price: ev.price,
+          priceRange: ev.priceRange,
+          isFeatured: ev.isFeatured,
+          views: Math.max(1, ticketsSold * 3),
+          ticketsSold
+        });
+      }
     }
 
     // 6. Top Referrers

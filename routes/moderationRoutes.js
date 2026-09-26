@@ -1,6 +1,6 @@
 const express = require('express');
 const Event = require('../models/Event');
-const { importAllExternalEvents } = require('../utils/eventAggregator');
+const { importAllExternalEvents, resolveKigaliVenue } = require('../utils/eventAggregator');
 const { postEventToTwitter } = require('../utils/twitter');
 const { postEventToInstagram } = require('../utils/instagram');
 const router = express.Router();
@@ -48,6 +48,35 @@ router.post('/sync', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: 'Scraping / sync failed', error: error.message });
+  }
+});
+
+// POST /api/moderation/resolve-venues - Retroactively resolve generic Kigali venues
+router.post('/resolve-venues', async (req, res) => {
+  try {
+    const events = await Event.find({
+      $or: [
+        { venue: /kigali,?\s*rwanda/i },
+        { venue: 'Kigali' },
+        { venue: 'Rwanda' },
+        { venue: null },
+        { venue: '' }
+      ]
+    });
+
+    let updatedCount = 0;
+    for (const ev of events) {
+      const resolved = resolveKigaliVenue(ev.title, ev.description, ev.venue, ev.sourceUrl, ev.category);
+      if (resolved && resolved !== ev.venue && !/kigali,?\s*rwanda$/i.test(resolved)) {
+        ev.venue = resolved;
+        await ev.save();
+        updatedCount++;
+      }
+    }
+
+    res.json({ message: `Successfully resolved venues for ${updatedCount} event(s)!`, updatedCount });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to resolve venues', error: err.message });
   }
 });
 
