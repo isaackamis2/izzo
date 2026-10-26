@@ -1,3 +1,12 @@
+/**
+ * ======================================================
+ * PLATFORM DEVELOPED BY: Isiaka Kamana (Isaac)
+ * Role: Lead Web Developer & Database Architect
+ * Website: https://x.com/isaackamis2
+ * Contact: isaackamis@gmail.com
+ * ======================================================
+ */
+
 const express = require('express');
 const router = express.Router();
 const Event = require('../models/Event');
@@ -5,42 +14,7 @@ const Registration = require('../models/Registration');
 const { protect } = require('../middleware/authMiddleware');
 const QRCode = require('qrcode');
 const axios = require('axios');
-const nodemailer = require('nodemailer');
-
-async function sendTicketEmail(user, event, registration) {
-  try {
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: process.env.SMTP_PORT,
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: { 
-        user: process.env.SMTP_USER, 
-        pass: process.env.SMTP_PASS 
-      },
-    });
-
-    const qrBase64 = registration.qrCode.split(';base64,').pop();
-    const info = await transporter.sendMail({
-      from: `"IzzoEvents Tickets" <${process.env.SMTP_USER}>`,
-      to: user.email,
-      subject: `Your Ticket for ${event.title}`,
-      html: `
-        <h2>Hi ${user.name},</h2>
-        <p>Thank you for registering for <strong>${event.title}</strong>!</p>
-        <p><strong>Date:</strong> ${new Date(event.date).toLocaleDateString()}</p>
-        <p><strong>Venue:</strong> ${event.venue}</p>
-        <p><strong>Ticket Tier:</strong> ${registration.ticketTier}</p>
-        <p>Please find your QR code ticket attached to this email. Present it at the entrance.</p>
-        <p>See you there!</p>
-      `,
-      attachments: [{ filename: 'ticket-qrcode.png', content: qrBase64, encoding: 'base64' }]
-    });
-
-    console.log("Ticket Email sent to:", user.email);
-  } catch (err) {
-    console.error("Error sending email:", err);
-  }
-}
+const { sendTicketEmail, notifyNewRegistration } = require('../utils/mailer');
 
 // ─── Register for a Free Event ───────────────────────────────────────────────
 router.post('/register-free', protect, async (req, res) => {
@@ -71,8 +45,9 @@ router.post('/register-free', protect, async (req, res) => {
     event.currentCapacity -= 1;
     await event.save();
 
-    // Fire & Forget email
+    // Fire & Forget email confirmations and admin alerts
     sendTicketEmail(req.user, event, reg).catch(console.error);
+    notifyNewRegistration(req.user, event, reg).catch(console.error);
 
     res.status(201).json({ message: 'Successfully registered', registration: reg });
   } catch (error) {
@@ -125,6 +100,10 @@ router.post('/purchase-momo', protect, async (req, res) => {
     event.currentCapacity -= 1;
     await event.save();
 
+    // Fire email confirmations and admin alerts
+    sendTicketEmail(req.user, event, reg).catch(console.error);
+    notifyNewRegistration(req.user, event, reg).catch(console.error);
+
     res.status(201).json({ 
       message: 'Payment Successful', 
       registration: reg,
@@ -136,66 +115,136 @@ router.post('/purchase-momo', protect, async (req, res) => {
   }
 });
 
-// ─── Verify Flutterwave Payment ──────────────────────────────────────────────
-router.post('/verify-flutterwave', protect, async (req, res) => {
+// ─── Initiate PayPack Payment ──────────────────────────────────────────────────
+router.post('/paypack/initiate', protect, async (req, res) => {
   try {
-    const { transaction_id, eventId, tierName } = req.body;
+    const { eventId, tierName, phoneNumber } = req.body;
     
-    // 1. Verify transaction with Flutterwave API
-    const response = await axios.get(`https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`, {
-      headers: {
-        Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}`
-      }
-    });
-
-    if (response.data.status !== 'success' || response.data.data.status !== 'successful') {
-      return res.status(400).json({ message: 'Transaction could not be verified' });
+    if (!phoneNumber || phoneNumber.length < 10) {
+      return res.status(400).json({ message: 'Invalid phone number format. Use 078XXXXXXX' });
     }
 
-    const amountPaid = response.data.data.amount;
-
-    // 2. Fetch event and check capacity
     const event = await Event.findById(eventId);
     if (!event) return res.status(404).json({ message: 'Event not found' });
+    if (!event.isTicketed) return res.status(400).json({ message: 'This is a free event' });
     if (event.currentCapacity <= 0) return res.status(400).json({ message: 'Event is sold out' });
 
-    // Check if user already registered while payment was processing
     const existing = await Registration.findOne({ user: req.user._id, event: eventId });
     if (existing) return res.status(400).json({ message: 'You already have a ticket for this event' });
 
-    // 3. Generate Ticket QR Code
+    // Find the correct price for the tier
+    let amount = event.price;
+    if (event.ticketTiers && event.ticketTiers.length > 0) {
+      const tier = event.ticketTiers.find(t => t.name === tierName);
+      if (tier) amount = tier.price;
+    }
+
+    // Authenticate with PayPack
+    let access_token;
+    try {
+      const authRes = await axios.post('https://payments.paypack.rw/api/auth/agents/authorize', {
+        client_id: process.env.PAYPACK_CLIENT_ID || 'test_client_id',
+        client_secret: process.env.PAYPACK_CLIENT_SECRET || 'test_client_secret'
+      });
+      access_token = authRes.data.access;
+    } catch (err) {
+      console.error('PayPack Auth Error:', err.response?.data || err.message);
+      return res.status(500).json({ message: 'Payment gateway authentication failed' });
+    }
+
+    // Initiate Cashin
+    const cashinRes = await axios.post('https://payments.paypack.rw/api/transactions/cashin', {
+      amount: amount,
+      number: phoneNumber,
+      environment: process.env.NODE_ENV === 'production' ? 'production' : 'development'
+    }, {
+      headers: { Authorization: `Bearer ${access_token}` }
+    });
+
+    res.status(200).json({
+      message: 'Payment prompt sent to phone',
+      ref: cashinRes.data.ref,
+      status: cashinRes.data.status
+    });
+
+  } catch (error) {
+    console.error('PayPack Initiate Error:', error.response?.data || error.message);
+    res.status(500).json({ message: error.response?.data?.message || 'Failed to initiate payment' });
+  }
+});
+
+// ─── Verify PayPack Payment ────────────────────────────────────────────────────
+router.post('/paypack/verify', protect, async (req, res) => {
+  try {
+    const { ref, eventId, tierName } = req.body;
+    
+    // Authenticate with PayPack
+    const authRes = await axios.post('https://payments.paypack.rw/api/auth/agents/authorize', {
+      client_id: process.env.PAYPACK_CLIENT_ID || 'test_client_id',
+      client_secret: process.env.PAYPACK_CLIENT_SECRET || 'test_client_secret'
+    });
+    const access_token = authRes.data.access;
+
+    // Check transaction status
+    const statusRes = await axios.get(`https://payments.paypack.rw/api/transactions/find/${ref}`, {
+      headers: { Authorization: `Bearer ${access_token}` }
+    });
+
+    const txStatus = statusRes.data.status; // typically 'pending', 'successful', or 'failed'
+    
+    if (txStatus === 'pending') {
+      return res.status(202).json({ message: 'Payment still pending', status: 'pending' });
+    }
+    
+    if (txStatus === 'failed') {
+      return res.status(400).json({ message: 'Payment failed or was cancelled by user', status: 'failed' });
+    }
+
+    if (txStatus !== 'successful') {
+      return res.status(400).json({ message: `Unknown payment status: ${txStatus}`, status: txStatus });
+    }
+
+    const amountPaid = statusRes.data.amount;
+
+    // Payment is successful, generate ticket
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+
+    const existing = await Registration.findOne({ user: req.user._id, event: eventId });
+    if (existing) return res.status(200).json({ message: 'Ticket already generated', registration: existing });
+
     const ticketData = JSON.stringify({ 
       userId: req.user._id, 
       eventId: event._id, 
       tier: tierName,
-      txId: transaction_id
+      txId: ref
     });
     const qrCode = await QRCode.toDataURL(ticketData);
 
-    // 4. Create Registration
     const reg = await Registration.create({
       user: req.user._id,
       event: eventId,
       status: 'Registered',
       ticketTier: tierName,
       amountPaid: amountPaid,
-      transactionId: transaction_id.toString(),
+      transactionId: ref,
       qrCode
     });
 
     event.currentCapacity -= 1;
     await event.save();
 
-    // Fire & Forget email
     sendTicketEmail(req.user, event, reg).catch(console.error);
+    notifyNewRegistration(req.user, event, reg).catch(console.error);
 
     res.status(201).json({ 
-      message: 'Payment verified and ticket generated successfully!', 
+      message: 'Payment successful! Ticket generated.', 
+      status: 'successful',
       registration: reg 
     });
   } catch (error) {
-    if (error.code === 11000) return res.status(400).json({ message: 'Already registered' });
-    res.status(500).json({ message: error.response?.data?.message || error.message });
+    console.error('PayPack Verify Error:', error.response?.data || error.message);
+    res.status(500).json({ message: error.response?.data?.message || 'Failed to verify payment' });
   }
 });
 
@@ -211,41 +260,224 @@ router.get('/my-tickets', protect, async (req, res) => {
   }
 });
 
-// ─── Scan & Check-in Ticket ────────────────────────────────────────────────────
+// ─── Scan & Check-in Ticket (QR Code or Manual Code) ───────────────────────────
 router.post('/check-in', protect, async (req, res) => {
   try {
-    // Only Admin or Manager can check-in
     if (req.user.role !== 'Admin' && req.user.role !== 'Manager') {
       return res.status(403).json({ message: 'Not authorized to check-in tickets' });
     }
 
-    const { userId, eventId } = req.body;
-    
-    // Find Registration
-    const registration = await Registration.findOne({ user: userId, event: eventId }).populate('user', 'name email').populate('event', 'title manager');
-    
+    const { userId, eventId, ticketCode } = req.body;
+    let registration = null;
+
+    if (userId && eventId) {
+      registration = await Registration.findOne({ user: userId, event: eventId })
+        .populate('user', 'name email')
+        .populate('event', 'title manager');
+    } else if (ticketCode) {
+      const cleanCode = ticketCode.trim();
+      // Search by transactionId or Registration Mongo ID
+      const query = {
+        $or: [
+          { transactionId: cleanCode },
+          { _id: cleanCode.match(/^[0-9a-fA-F]{24}$/) ? cleanCode : null }
+        ].filter(Boolean)
+      };
+      if (eventId) query.event = eventId;
+      registration = await Registration.findOne(query)
+        .populate('user', 'name email')
+        .populate('event', 'title manager');
+    }
+
     if (!registration) {
-      return res.status(404).json({ message: 'Ticket not found or invalid QR code.' });
+      return res.status(404).json({ message: 'Ticket not found. Invalid QR code or ticket reference.' });
     }
 
     // Check if the manager owns the event (unless Admin)
-    if (req.user.role !== 'Admin' && registration.event.manager.toString() !== req.user._id.toString()) {
+    if (req.user.role !== 'Admin' && registration.event?.manager && registration.event.manager.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'You are not the manager of this event.' });
     }
 
-    // Check if already checked in
     if (registration.checkedIn) {
-      return res.status(400).json({ message: 'Ticket has ALREADY been used!', registration });
+      return res.status(400).json({ 
+        message: '⚠️ TICKET ALREADY USED! This ticket was previously checked in.', 
+        registration,
+        alreadyCheckedIn: true
+      });
     }
 
-    // Mark as checked in
     registration.checkedIn = true;
     await registration.save();
 
-    res.json({ message: 'Ticket successfully verified and checked in!', registration });
+    res.json({ 
+      message: '✅ Ticket verified! Check-in successful.', 
+      registration 
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ─── Get Event Attendees & Stats ───────────────────────────────────────────────
+router.get('/event/:eventId/attendees', protect, async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.eventId);
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+
+    if (req.user.role !== 'Admin' && event.manager && event.manager.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized to view attendees for this event' });
+    }
+
+    const attendees = await Registration.find({ event: req.params.eventId })
+      .populate('user', 'name email')
+      .sort({ createdAt: -1 });
+
+    const totalRegistered = attendees.length;
+    const checkedInCount = attendees.filter(a => a.checkedIn).length;
+    const totalRevenue = attendees.reduce((sum, a) => sum + (a.amountPaid || 0), 0);
+
+    res.json({
+      eventTitle: event.title,
+      totalRegistered,
+      checkedInCount,
+      totalRevenue,
+      attendees
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ─── Export Event Attendees to CSV ─────────────────────────────────────────────
+router.get('/event/:eventId/export-csv', protect, async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.eventId);
+    if (!event) return res.status(404).send('Event not found');
+
+    if (req.user.role !== 'Admin' && event.manager && event.manager.toString() !== req.user._id.toString()) {
+      return res.status(403).send('Not authorized');
+    }
+
+    const attendees = await Registration.find({ event: req.params.eventId })
+      .populate('user', 'name email')
+      .sort({ createdAt: -1 });
+
+    let csv = 'Ticket Reference,Attendee Name,Email,Ticket Tier,Amount Paid (RWF),Payment Reference,Checked In,Registration Date\n';
+    
+    attendees.forEach(att => {
+      const name = att.user?.name ? `"${att.user.name.replace(/"/g, '""')}"` : '"Guest"';
+      const email = att.user?.email || 'N/A';
+      const tier = att.ticketTier || 'Standard';
+      const amount = att.amountPaid || 0;
+      const tx = att.transactionId || 'N/A';
+      const checked = att.checkedIn ? 'YES' : 'NO';
+      const date = new Date(att.createdAt).toISOString().split('T')[0];
+      csv += `"${att._id}",${name},"${email}","${tier}",${amount},"${tx}",${checked},"${date}"\n`;
+    });
+
+    const safeTitle = event.title.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="attendees_${safeTitle}.csv"`);
+    res.status(200).send(csv);
+  } catch (error) {
+    res.status(500).send('Error generating attendee CSV');
+  }
+});
+
+// ─── Direct Organizer MoMo Ticket Confirmation (Non-Custodial / BNR Compliant) ───
+router.post('/direct-momo/confirm', protect, async (req, res) => {
+  try {
+    const { eventId, tierName, amount, phoneNumber, transactionRef } = req.body;
+
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+    if (!event.isTicketed) return res.status(400).json({ message: 'This is a free event' });
+    if (event.currentCapacity <= 0) return res.status(400).json({ message: 'Event is sold out' });
+
+    // Check existing registration
+    const existing = await Registration.findOne({ user: req.user._id, event: eventId });
+    if (existing) return res.status(400).json({ message: 'You already have a ticket for this event' });
+
+    const ticketPrice = Number(amount) || event.price || 0;
+    const finalTxRef = transactionRef?.trim() || ('MOMO-DIR-' + Date.now().toString().slice(-6));
+
+    // Calculate platform commission (default 4%)
+    const commissionPercent = event.platformFeePercent || 4;
+    const platformCommission = Math.round((ticketPrice * commissionPercent) / 100);
+
+    // Generate secure QR Code for check-in
+    const ticketData = JSON.stringify({
+      userId: req.user._id,
+      eventId: event._id,
+      tier: tierName || 'Standard',
+      txId: finalTxRef,
+      directMoMo: true
+    });
+    const qrCode = await QRCode.toDataURL(ticketData);
+
+    const reg = await Registration.create({
+      user: req.user._id,
+      event: eventId,
+      status: 'Registered',
+      ticketTier: tierName || 'Standard',
+      amountPaid: ticketPrice,
+      transactionId: finalTxRef,
+      qrCode
+    });
+
+    // Decrement capacity and accumulate organizer commission owed
+    event.currentCapacity = Math.max(0, event.currentCapacity - 1);
+    event.commissionOwed = (event.commissionOwed || 0) + platformCommission;
+    await event.save();
+
+    // Fire email confirmations and admin alerts
+    sendTicketEmail(req.user, event, reg).catch(console.error);
+    notifyNewRegistration(req.user, event, reg).catch(console.error);
+
+    res.status(201).json({
+      message: 'Ticket confirmed successfully',
+      registration: reg,
+      commissionRetained: platformCommission,
+      transactionId: finalTxRef
+    });
+  } catch (error) {
+    if (error.code === 11000) return res.status(400).json({ message: 'Already registered for this event' });
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ─── Get Organizer Commission Summary ───
+router.get('/event/:eventId/commission', protect, async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.eventId);
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+
+    if (req.user.role !== 'Admin' && event.manager && event.manager.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    const registrations = await Registration.find({ event: req.params.eventId, status: 'Registered' });
+    const totalCollected = registrations.reduce((sum, r) => sum + (r.amountPaid || 0), 0);
+    const feePercent = event.platformFeePercent || 4;
+    const totalCommission = Math.round((totalCollected * feePercent) / 100);
+
+    res.json({
+      eventId: event._id,
+      eventTitle: event.title,
+      organizerName: event.organizerName,
+      momoMerchantCode: event.momoMerchantCode,
+      momoPhoneNumber: event.momoPhoneNumber,
+      feePercent,
+      totalTicketsSold: registrations.length,
+      totalRevenueCollectedDirectly: totalCollected,
+      commissionOwed: event.commissionOwed || totalCommission,
+      commissionPaid: event.commissionPaid || 0,
+      balanceDue: Math.max(0, (event.commissionOwed || totalCommission) - (event.commissionPaid || 0))
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
 module.exports = router;
+

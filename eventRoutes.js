@@ -1,23 +1,93 @@
+/**
+ * ======================================================
+ * PLATFORM DEVELOPED BY: Isiaka Kamana (Isaac)
+ * Role: Lead Web Developer & Database Architect
+ * Website: https://x.com/isaackamis2
+ * Contact: isaackamis@gmail.com
+ * ======================================================
+ */
+
 const express = require('express');
 const Event = require('../models/Event');
 const User = require('../models/User');
 const { postEventToTwitter } = require('../utils/twitter');
+const { postEventToInstagram } = require('../utils/instagram');
 const router = express.Router();
+
+/**
+ * Returns midnight today in Africa/Kigali (+02:00, Central Africa Time)
+ */
+function getKigaliTodayStart() {
+  const kigaliDateStr = new Intl.DateTimeFormat('en-CA', { 
+    timeZone: 'Africa/Kigali', 
+    year: 'numeric', 
+    month: '2-digit', 
+    day: '2-digit' 
+  }).format(new Date());
+  return new Date(`${kigaliDateStr}T00:00:00+02:00`);
+}
 
 // GET all events
 router.get('/', async (req, res) => {
   try {
-    const { category, isFeatured, upcoming, limit } = req.query;
+    const { category, isFeatured, upcoming, limit, status, includePast, includePrivate } = req.query;
     let query = {};
     
+    if (status) {
+      if (status !== 'all') query.status = status;
+    } else {
+      // By default, public API only returns published events
+      query.status = { $nin: ['Pending_Moderation', 'Rejected'] };
+    }
+
+    // Exclude private/unlisted testing events from public discovery
+    if (includePrivate !== 'true' && status !== 'all') {
+      query.isPrivate = { $ne: true };
+    }
+
     if (category) query.category = category;
     if (isFeatured === 'true') query.isFeatured = true;
-    if (upcoming === 'true') query.date = { $gte: new Date() };
+
+    const now = new Date();
+    const todayStart = getKigaliTodayStart();
+
+    // Active vs Past filtering
+    if (includePast === 'only') {
+      // Historical/past events only
+      query.$or = [
+        { endDate: { $exists: true, $ne: null, $lt: now } },
+        {
+          $and: [
+            { $or: [{ endDate: { $exists: false } }, { endDate: null }] },
+            { date: { $lt: todayStart } }
+          ]
+        }
+      ];
+    } else if (includePast !== 'true' && status !== 'all') {
+      // Default for public discovery: strictly active current or upcoming events
+      // Events with an endDate must still be ongoing or future (endDate >= now)
+      // Events without an endDate must be today or in the future (date >= todayStart)
+      query.$or = [
+        { endDate: { $exists: true, $ne: null, $gte: now } },
+        {
+          $and: [
+            { $or: [{ endDate: { $exists: false } }, { endDate: null }] },
+            { date: { $gte: todayStart } }
+          ]
+        }
+      ];
+    }
 
     let dbQuery = Event.find(query).populate('manager', 'name');
     
-    if (upcoming === 'true') dbQuery = dbQuery.sort({ date: 1 });
-    else dbQuery = dbQuery.sort({ createdAt: -1 });
+    if (includePast === 'only') {
+      dbQuery = dbQuery.sort({ date: -1 });
+    } else if (includePast === 'true' || status === 'all') {
+      dbQuery = dbQuery.sort({ createdAt: -1 });
+    } else {
+      // Default: sort chronologically so today and this weekend appear first
+      dbQuery = dbQuery.sort({ date: 1 });
+    }
 
     if (limit) dbQuery = dbQuery.limit(parseInt(limit));
 
@@ -47,7 +117,62 @@ router.get('/share/:id', async (req, res) => {
 
     const frontendBase = req.query.frontend || 'https://izzoevents.com';
     const eventUrl = `${frontendBase}/events/${event._id}`;
-    const safeDesc = event.description.substring(0, 150).replace(/"/g, '&quot;').replace(/\n|\r/g, ' ') + '...';
+    const safeTitle = (event.title || 'Event').replace(/"/g, '&quot;');
+    const safeDesc = (event.description || '').substring(0, 160).replace(/"/g, '&quot;').replace(/\n|\r/g, ' ') + '...';
+    const safeImage = event.bannerImage || 'https://izzoevents.com/favicon.jpg';
+    const safeVenue = (event.venue || 'Kigali, Rwanda').replace(/"/g, '&quot;');
+    const isoDate = event.date ? new Date(event.date).toISOString() : new Date().toISOString();
+    const isoEndDate = event.endDate ? new Date(event.endDate).toISOString() : (event.date ? new Date(new Date(event.date).getTime() + 4 * 60 * 60 * 1000).toISOString() : isoDate);
+    const cleanOrg = (event.organizerName && !/unknown organizer|event host/i.test(event.organizerName)) 
+      ? event.organizerName 
+      : (event.venue && event.venue !== 'Kigali, Rwanda' ? event.venue.split(',')[0].trim() : 'IzzoEvents Experience Host');
+    const ticketPrice = event.isTicketed && event.ticketTiers && event.ticketTiers.length > 0 ? event.ticketTiers[0].price : (event.price || 0);
+
+    const eventJsonLd = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Event",
+      "name": event.title,
+      "description": safeDesc,
+      "image": [safeImage],
+      "startDate": isoDate,
+      "endDate": isoEndDate,
+      "eventStatus": "https://schema.org/EventScheduled",
+      "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+      "location": {
+        "@type": "Place",
+        "name": safeVenue,
+        "address": {
+          "@type": "PostalAddress",
+          "streetAddress": safeVenue,
+          "addressLocality": "Kigali",
+          "addressRegion": "Kigali City",
+          "postalCode": "00000",
+          "addressCountry": "RW"
+        },
+        "geo": {
+          "@type": "GeoCoordinates",
+          "latitude": -1.9441,
+          "longitude": 30.0619
+        }
+      },
+      "organizer": {
+        "@type": "Organization",
+        "name": cleanOrg,
+        "url": frontendBase
+      },
+      "performer": {
+        "@type": "PerformingGroup",
+        "name": cleanOrg
+      },
+      "offers": {
+        "@type": "Offer",
+        "url": eventUrl,
+        "price": ticketPrice,
+        "priceCurrency": "RWF",
+        "availability": "https://schema.org/InStock",
+        "validFrom": isoDate
+      }
+    });
 
     const html = `
       <!DOCTYPE html>
@@ -55,27 +180,44 @@ router.get('/share/:id', async (req, res) => {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${event.title} | IzzoEvents</title>
+        <title>${safeTitle} | IzzoEvents Kigali</title>
         <meta name="description" content="${safeDesc}">
-        
-        <meta property="og:type" content="website">
-        <meta property="og:url" content="${eventUrl}">
-        <meta property="og:title" content="${event.title}">
-        <meta property="og:description" content="${safeDesc}">
-        <meta property="og:image" content="${event.bannerImage}">
+        <link rel="canonical" href="${eventUrl}">
 
+        <!-- 🇷🇼 GEO Targeting -->
+        <meta name="geo.region" content="RW-01">
+        <meta name="geo.placename" content="Kigali, Rwanda">
+        <meta name="geo.position" content="-1.9441;30.0619">
+        <meta name="ICBM" content="-1.9441, 30.0619">
+        
+        <!-- OpenGraph -->
+        <meta property="og:type" content="event">
+        <meta property="og:locale" content="en_RW">
+        <meta property="og:site_name" content="IzzoEvents">
+        <meta property="og:url" content="${eventUrl}">
+        <meta property="og:title" content="${safeTitle} | IzzoEvents Kigali">
+        <meta property="og:description" content="${safeDesc}">
+        <meta property="og:image" content="${safeImage}">
+
+        <!-- Twitter Card -->
         <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:site" content="@izzoevents">
         <meta name="twitter:domain" content="izzoevents.com">
-        <meta name="twitter:title" content="${event.title}">
+        <meta name="twitter:title" content="${safeTitle} | Kigali, Rwanda">
         <meta name="twitter:description" content="${safeDesc}">
-        <meta name="twitter:image" content="${event.bannerImage}">
+        <meta name="twitter:image" content="${safeImage}">
+
+        <!-- Schema.org Event -->
+        <script type="application/ld+json">
+          ${eventJsonLd}
+        </script>
 
         <script>
           window.location.href = "${eventUrl}";
         </script>
       </head>
       <body>
-        <p>Redirecting to <a href="${eventUrl}">${event.title}</a>...</p>
+        <p>Redirecting to <a href="${eventUrl}">${safeTitle}</a>...</p>
       </body>
       </html>
     `;
@@ -88,7 +230,7 @@ router.get('/share/:id', async (req, res) => {
 // POST new event
 router.post('/', async (req, res) => {
   try {
-    const { title, description, category, venue, organizerName, date, endDate, recurringFrequency, price, maxCapacity, manager, bannerImage, isFeatured, isTicketed, ticketTiers, priceRange, externalTicketLink } = req.body;
+    const { title, description, category, venue, organizerName, date, endDate, recurringFrequency, price, maxCapacity, manager, bannerImage, isFeatured, isTicketed, ticketTiers, priceRange, externalTicketLink, isPrivate, organizerPaymentType, momoMerchantCode, momoMerchantName, momoPhoneNumber, platformFeePercent } = req.body;
     
     // Admin check for isFeatured
     let finalIsFeatured = false;
@@ -103,12 +245,21 @@ router.post('/', async (req, res) => {
       bannerImage: bannerImage || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=800&q=80',
       isFeatured: finalIsFeatured,
       isTicketed,
-      ticketTiers, priceRange, externalTicketLink
+      ticketTiers, priceRange, externalTicketLink,
+      isPrivate: !!isPrivate,
+      organizerPaymentType: organizerPaymentType || 'momo_code',
+      momoMerchantCode: momoMerchantCode || '',
+      momoMerchantName: momoMerchantName || '',
+      momoPhoneNumber: momoPhoneNumber || '',
+      platformFeePercent: platformFeePercent || 4
     });
     await newEvent.save();
     
-    // Asynchronously cross-post to Twitter
-    postEventToTwitter(newEvent).catch(err => console.error(err));
+    // Asynchronously cross-post to Twitter and Instagram only if NOT private
+    if (!isPrivate) {
+      postEventToTwitter(newEvent).catch(err => console.error('[Twitter AutoPost Error]:', err));
+      postEventToInstagram(newEvent).catch(err => console.error('[Instagram AutoPost Error]:', err));
+    }
     
     res.status(201).json(newEvent);
   } catch (error) {
@@ -119,7 +270,7 @@ router.post('/', async (req, res) => {
 // PUT update event
 router.put('/:id', async (req, res) => {
   try {
-    const { title, description, category, venue, organizerName, date, endDate, recurringFrequency, price, maxCapacity, bannerImage, isFeatured, manager, isTicketed, ticketTiers, priceRange, externalTicketLink } = req.body;
+    const { title, description, category, venue, organizerName, date, endDate, recurringFrequency, price, maxCapacity, bannerImage, isFeatured, manager, isTicketed, ticketTiers, priceRange, externalTicketLink, isPrivate, sourcePlatform, sourceUrl, organizerPaymentType, momoMerchantCode, momoMerchantName, momoPhoneNumber, platformFeePercent } = req.body;
     
     // Admin check for isFeatured
     let finalIsFeatured = false;
@@ -128,9 +279,19 @@ router.put('/:id', async (req, res) => {
       if (user && user.role === 'Admin') finalIsFeatured = true;
     }
 
+    const updateFields = { title, description, category, venue, organizerName, date, endDate, recurringFrequency, price, maxCapacity, bannerImage, isFeatured: finalIsFeatured, isTicketed, ticketTiers, priceRange, externalTicketLink };
+    if (isPrivate !== undefined) updateFields.isPrivate = !!isPrivate;
+    if (sourcePlatform !== undefined) updateFields.sourcePlatform = sourcePlatform;
+    if (sourceUrl !== undefined) updateFields.sourceUrl = sourceUrl;
+    if (organizerPaymentType !== undefined) updateFields.organizerPaymentType = organizerPaymentType;
+    if (momoMerchantCode !== undefined) updateFields.momoMerchantCode = momoMerchantCode;
+    if (momoMerchantName !== undefined) updateFields.momoMerchantName = momoMerchantName;
+    if (momoPhoneNumber !== undefined) updateFields.momoPhoneNumber = momoPhoneNumber;
+    if (platformFeePercent !== undefined) updateFields.platformFeePercent = platformFeePercent;
+
     const updated = await Event.findByIdAndUpdate(
       req.params.id,
-      { title, description, category, venue, organizerName, date, endDate, recurringFrequency, price, maxCapacity, bannerImage, isFeatured: finalIsFeatured, isTicketed, ticketTiers, priceRange, externalTicketLink },
+      updateFields,
       { new: true, runValidators: true }
     );
     if (!updated) return res.status(404).json({ message: 'Event not found' });
@@ -148,6 +309,31 @@ router.delete('/:id', async (req, res) => {
     res.json({ message: 'Event deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// PATCH sponsor an event (Admin / Manager)
+router.patch('/:id/sponsor', async (req, res) => {
+  try {
+    const { isSponsored, sponsorshipTier, durationDays } = req.body;
+    let sponsoredUntil = null;
+    if (isSponsored) {
+      const days = parseInt(durationDays) || 7;
+      sponsoredUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+    }
+    const updated = await Event.findByIdAndUpdate(
+      req.params.id,
+      {
+        isSponsored: Boolean(isSponsored),
+        sponsorshipTier: sponsorshipTier || 'Gold',
+        sponsoredUntil: isSponsored ? sponsoredUntil : null
+      },
+      { new: true }
+    );
+    if (!updated) return res.status(404).json({ message: 'Event not found' });
+    res.json({ success: true, event: updated });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 

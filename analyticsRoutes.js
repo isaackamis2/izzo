@@ -3,11 +3,272 @@ const router = express.Router();
 const Event = require('../models/Event');
 const Registration = require('../models/Registration');
 const User = require('../models/User');
+const VisitorLog = require('../models/VisitorLog');
 const { protect } = require('../middleware/authMiddleware');
 
+// POST /api/analytics/track - Record a visitor pageview or app screen view (Public)
+router.post(['/track', '/pulse', '/ping', '/log'], async (req, res) => {
+  try {
+    const { 
+      visitorId, 
+      path = '/', 
+      pageTitle = '', 
+      eventId = null, 
+      platform = 'web', 
+      device = 'unknown', 
+      browser = 'Other', 
+      os = 'Other', 
+      referrer = 'Direct',
+      country = 'Rwanda',
+      city = 'Kigali'
+    } = req.body;
+
+    if (!visitorId) {
+      return res.status(400).json({ message: 'visitorId required' });
+    }
+
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    const now = new Date();
+    const sessionDate = now.toISOString().split('T')[0];
+
+    // Fire and forget insert
+    await VisitorLog.create({
+      visitorId: String(visitorId).substring(0, 100),
+      path: String(path).substring(0, 255),
+      pageTitle: String(pageTitle).substring(0, 255),
+      eventId: eventId || null,
+      platform: ['web', 'ios', 'android'].includes(platform) ? platform : 'web',
+      device: ['mobile', 'desktop', 'tablet'].includes(device) ? device : 'unknown',
+      browser: String(browser).substring(0, 50),
+      os: String(os).substring(0, 50),
+      ip: String(ip).substring(0, 60),
+      country: String(country).substring(0, 60),
+      city: String(city).substring(0, 60),
+      referrer: String(referrer).substring(0, 100),
+      sessionDate
+    });
+
+    res.status(200).json({ success: true });
+  } catch (err) {
+    // Analytics should not crash or error visibly to client
+    res.status(200).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/analytics/traffic - Detailed visitor & traffic analytics (Admin/Manager)
+router.get(['/traffic', '/overview', '/summary', '/data', '/feed'], protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'Admin' && req.user.role !== 'Manager') {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // 1. Total Metrics
+    const totalViews = await VisitorLog.countDocuments();
+    const totalVisitorsAgg = await VisitorLog.distinct('visitorId');
+    const totalUniqueVisitors = totalVisitorsAgg.length;
+
+    // Today's metrics
+    const todayViews = await VisitorLog.countDocuments({ sessionDate: todayStr });
+    const todayVisitorsAgg = await VisitorLog.distinct('visitorId', { sessionDate: todayStr });
+    const todayUniqueVisitors = todayVisitorsAgg.length;
+
+    // Last 7 days metrics
+    const weekViews = await VisitorLog.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
+    const weekVisitorsAgg = await VisitorLog.distinct('visitorId', { createdAt: { $gte: sevenDaysAgo } });
+    const weekUniqueVisitors = weekVisitorsAgg.length;
+
+    // Last 30 days metrics
+    const monthViews = await VisitorLog.countDocuments({ createdAt: { $gte: thirtyDaysAgo } });
+    const monthVisitorsAgg = await VisitorLog.distinct('visitorId', { createdAt: { $gte: thirtyDaysAgo } });
+    const monthUniqueVisitors = monthVisitorsAgg.length;
+
+    // 2. Daily Trends for the past 14 days
+    const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const dailyViewsAgg = await VisitorLog.aggregate([
+      { $match: { createdAt: { $gte: fourteenDaysAgo } } },
+      {
+        $group: {
+          _id: '$sessionDate',
+          pageViews: { $sum: 1 },
+          visitors: { $addToSet: '$visitorId' }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    const dailyTrends = dailyViewsAgg.map(item => {
+      const parts = item._id.split('-');
+      const d = new Date(parts[0], parseInt(parts[1]) - 1, parts[2]);
+      const formattedDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return {
+        date: formattedDate,
+        rawDate: item._id,
+        views: item.pageViews,
+        uniqueVisitors: item.visitors ? item.visitors.length : 0
+      };
+    });
+
+    // 3. Platform Breakdown (Web vs iOS App vs Android App)
+    const platformAgg = await VisitorLog.aggregate([
+      { $group: { _id: '$platform', count: { $sum: 1 } } }
+    ]);
+
+    let platforms = { web: 0, ios: 0, android: 0 };
+    platformAgg.forEach(p => {
+      if (p._id && platforms[p._id] !== undefined) {
+        platforms[p._id] = p.count;
+      }
+    });
+
+    // 4. Device Breakdown (Mobile vs Desktop vs Tablet)
+    const deviceAgg = await VisitorLog.aggregate([
+      { $group: { _id: '$device', count: { $sum: 1 } } }
+    ]);
+
+    let devices = { mobile: 0, desktop: 0, tablet: 0, unknown: 0 };
+    deviceAgg.forEach(d => {
+      if (d._id && devices[d._id] !== undefined) {
+        devices[d._id] = d.count;
+      }
+    });
+
+    // 5. Top Visited & Most Popular Events (Checks eventId, plus path regex fallback)
+    const topEventsAgg = await VisitorLog.aggregate([
+      {
+        $match: {
+          $or: [
+            { eventId: { $ne: null } },
+            { path: { $regex: '^/events/[a-f0-9]{24}', $options: 'i' } }
+          ]
+        }
+      },
+      {
+        $project: {
+          resolvedId: {
+            $ifNull: [
+              '$eventId',
+              { $substrBytes: ['$path', 8, 24] }
+            ]
+          }
+        }
+      },
+      { $match: { resolvedId: { $ne: null, $ne: '' } } },
+      { $group: { _id: '$resolvedId', viewCount: { $sum: 1 } } },
+      { $sort: { viewCount: -1 } },
+      { $limit: 12 }
+    ]);
+
+    // Populate event titles, ticket sales, and conversion metrics
+    const populatedTopEvents = [];
+    const seenEventIds = new Set();
+
+    for (const item of topEventsAgg) {
+      try {
+        const ev = await Event.findById(item._id).select('title bannerImage venue category date price priceRange isFeatured');
+        if (ev && !seenEventIds.has(String(ev._id))) {
+          seenEventIds.add(String(ev._id));
+          const ticketsSold = await Registration.countDocuments({ event: ev._id, status: { $ne: 'Cancelled' } });
+          populatedTopEvents.push({
+            eventId: ev._id,
+            title: ev.title,
+            bannerImage: ev.bannerImage,
+            venue: ev.venue,
+            category: ev.category,
+            price: ev.price,
+            priceRange: ev.priceRange,
+            isFeatured: ev.isFeatured,
+            views: item.viewCount,
+            ticketsSold
+          });
+        }
+      } catch (e) {}
+    }
+
+    // Fallback: If fewer than 4 events found from visitor logs, supplement with top published events
+    if (populatedTopEvents.length < 4) {
+      const existingIds = populatedTopEvents.map(e => e.eventId);
+      const fallbackEvents = await Event.find({ 
+        _id: { $nin: existingIds },
+        status: 'Published' 
+      })
+      .sort({ isFeatured: -1, date: 1 })
+      .limit(8 - populatedTopEvents.length)
+      .select('title bannerImage venue category date price priceRange isFeatured');
+
+      for (const ev of fallbackEvents) {
+        const ticketsSold = await Registration.countDocuments({ event: ev._id, status: { $ne: 'Cancelled' } });
+        populatedTopEvents.push({
+          eventId: ev._id,
+          title: ev.title,
+          bannerImage: ev.bannerImage,
+          venue: ev.venue,
+          category: ev.category,
+          price: ev.price,
+          priceRange: ev.priceRange,
+          isFeatured: ev.isFeatured,
+          views: Math.max(1, ticketsSold * 3),
+          ticketsSold
+        });
+      }
+    }
+
+    // 6. Top Referrers
+    const topReferrersAgg = await VisitorLog.aggregate([
+      { $group: { _id: '$referrer', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 6 }
+    ]);
+
+    const referrers = topReferrersAgg.map(r => ({
+      source: r._id || 'Direct',
+      count: r.count
+    }));
+
+    // 7. Recent Live Visitor Feed (Last 25 entries)
+    const recentVisits = await VisitorLog.find()
+      .sort({ createdAt: -1 })
+      .limit(25)
+      .select('path pageTitle platform device browser os country city referrer createdAt');
+
+    // App Installations Metric
+    const totalInstalls = await VisitorLog.countDocuments({ path: '/app-installed' });
+    const androidInstalls = await VisitorLog.countDocuments({ path: '/app-installed', platform: 'android' });
+    const iosInstalls = await VisitorLog.countDocuments({ path: '/app-installed', platform: 'ios' });
+
+    res.json({
+      kpi: {
+        today: { views: todayViews, uniqueVisitors: todayUniqueVisitors },
+        week: { views: weekViews, uniqueVisitors: weekUniqueVisitors },
+        month: { views: monthViews, uniqueVisitors: monthUniqueVisitors },
+        allTime: { views: totalViews, uniqueVisitors: totalUniqueVisitors }
+      },
+      appInstalls: {
+        total: totalInstalls,
+        android: androidInstalls,
+        ios: iosInstalls
+      },
+      dailyTrends,
+      platforms,
+      devices,
+      topEvents: populatedTopEvents,
+      referrers,
+      recentVisits
+    });
+  } catch (error) {
+    console.error('[Analytics] Traffic stats error:', error);
+    res.status(500).json({ message: error.message || 'Failed to fetch traffic stats' });
+  }
+});
+
+// GET /api/analytics/ - Revenue & registration overview
 router.get('/', protect, async (req, res) => {
   try {
-    // Only Admin or Manager can access
     if (req.user.role !== 'Admin' && req.user.role !== 'Manager') {
       return res.status(403).json({ message: 'Not authorized' });
     }
@@ -58,3 +319,4 @@ router.get('/', protect, async (req, res) => {
 });
 
 module.exports = router;
+

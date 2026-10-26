@@ -27,6 +27,9 @@ if (process.env.CLOUDINARY_CLOUD_NAME) {
     params: {
       folder: 'eventflow',
       allowed_formats: ['jpg', 'png', 'jpeg', 'webp'],
+      transformation: [
+        { quality: 'auto:eco', fetch_format: 'webp' }
+      ]
     },
   });
   
